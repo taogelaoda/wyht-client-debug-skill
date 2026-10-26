@@ -7,6 +7,10 @@
   frontend  已装，接口经医院前置机代理到外网
   direct    已装，直连云端
 
+同时从包目录名（如 WYHT--3.1.1--x64--…）解析版本，打印壳形态与启动语义：
+  ≥3.0.0 → C++ 原生 CEF；<3.0.0 → C# 壳
+  ≥3.1.0 → 支持冷/热启动（单实例转发参数）；更早的版本每次启动都是全新实例
+
 用法：
   python check_env.py --dir "D:\\WYHT--3.1.1--x64--20261021_102251--医保凭证"
   python check_env.py --db  "...\\config.db"
@@ -16,6 +20,7 @@
 import argparse
 import ipaddress
 import os
+import re
 import sqlite3
 import sys
 import urllib.parse
@@ -23,6 +28,7 @@ import urllib.parse
 KEYS = ('IsFirstRun', 'ServerUrl', 'HospitalId', 'ClientType', 'HospitalUserName')
 TABLE = 'iu_Hrball_exe'
 PRIVATE_SUFFIXES = ('.local', '.lan', '.internal', '.corp')
+VERSION_RE = re.compile(r'(\d+)\.(\d+)\.(\d+)')
 
 
 def resolve_db(argv_dir, argv_db):
@@ -64,6 +70,28 @@ def is_private_host(host):
         return False
 
 
+def detect_version(*paths):
+    """从包目录名里取版本号（如 WYHT--3.1.1--x64--…），返回 (major, minor, patch) 或 None。"""
+    for path in paths:
+        if not path:
+            continue
+        m = VERSION_RE.search(os.path.basename(os.path.abspath(path)))
+        if m:
+            return tuple(int(x) for x in m.groups())
+    return None
+
+
+def version_note(ver):
+    """按版本给出壳形态与启动语义：≥3.0 为 C++，冷/热启动只有 ≥3.1.0 才有。"""
+    if ver is None:
+        return '版本未识别（目录名里没有 x.y.z）——请人工确认：≥3.0 为 C++ 壳，<3.0 为 C# 壳；冷/热启动只有 ≥3.1.0 才有'
+    major, minor, _ = ver
+    shell = 'C++ 原生 CEF' if major >= 3 else 'C# 壳（CefSharp 系）'
+    hot = (major, minor) >= (3, 1)  # 3.0.x 仍是纯单实例冷启动
+    start = '冷/热启动可用' if hot else '只有冷启动（每次启动都是全新实例，没有参数转发）'
+    return '%s · %s · %s' % ('.'.join(str(x) for x in ver), shell, start)
+
+
 def classify(cfg):
     """按 IsFirstRun + ServerUrl 归类，返回 (状态, 说明)。"""
     raw_first = cfg.get('IsFirstRun')
@@ -99,6 +127,7 @@ def main():
         return 4
 
     print('config.db = %s' % db_path)
+    print('版本: %s' % version_note(detect_version(args.dir, os.path.dirname(db_path))))
     for key in KEYS:
         print('  %-17s = %s' % (key, cfg.get(key, '<缺失>')))
     # ServerUrl 里的 iuWorkStation 会在启动时被替换为 iuPublicClientServer，两种写法都能通
