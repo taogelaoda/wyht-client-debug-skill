@@ -20,7 +20,7 @@
 
 ```powershell
 # 1. 克隆本仓库（任意位置，建议与项目同级）
-git clone <本仓库地址> D:\Document\wyht-client-debug-skill
+git clone http://192.168.1.66:9999/zhugangtao/wyht-client-debug-skill.git D:\Document\wyht-client-debug-skill
 
 # 2. 在项目里建联接（项目未跟踪 .claude/ 时不需要改 .gitignore）
 cmd /c mklink /J "<项目>\.claude\skills\wyht-client-debug" "D:\Document\wyht-client-debug-skill"
