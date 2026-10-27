@@ -19,6 +19,13 @@ export default [
     },
   },
   {
+    name: '尾段含单个 - 时不截断（有 -- 时只按 -- 切）',
+    fn: () => {
+      const r = deriveClient('D:\\WYHT--3.1.1--x64--20261021_102251--医保-凭证');
+      assert.strictEqual(r.name, '3.1.1-医保-凭证');
+    },
+  },
+  {
     name: '版本语义：3.0 是 C++ 但无热启动',
     fn: () => {
       const r = versionSemantics('3.0.4');

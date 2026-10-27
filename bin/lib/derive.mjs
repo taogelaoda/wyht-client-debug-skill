@@ -3,11 +3,12 @@ import path from 'path';
 
 const KNOWN_EXES = ['czht.exe', 'iu.Hrball.exe'];
 
-// 目录名形如 WYHT--3.1.1--x64--20261021_102251--医保凭证：取首个 x.y.z 与最后一段作为名字
+// 目录名形如 WYHT--3.1.1--x64--20261021_102251--医保凭证：取首个 x.y.z 与尾段作为名字
 export function deriveClient(dir) {
   const base = String(dir || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
   const m = base.match(/(\d+\.\d+\.\d+)/);
-  const tail = base.split(/-+/).filter(Boolean).pop() || base;
+  // 有 `--` 时取最后一个 `--` 之后的部分；没有 `--` 时按 `-` 取末段
+  const tail = base.split(base.indexOf('--') !== -1 ? '--' : '-').filter(Boolean).pop() || base;
   return { version: m ? m[1] : null, name: m ? m[1] + '-' + tail : tail };
 }
 
