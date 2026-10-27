@@ -15,6 +15,9 @@ $bootstrapUrl = 'https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-
 $localPath = Join-Path $env:TEMP 'wyht-skill-bootstrap.ps1'
 
 $code = (Invoke-WebRequest -Uri $bootstrapUrl -UseBasicParsing).Content
+# The downloaded file already starts with a BOM; writing it with a BOM-adding encoder
+# yields a double BOM and PowerShell then refuses to parse it.
+$code = $code.TrimStart([char]0xFEFF)
 [IO.File]::WriteAllText($localPath, $code, [Text.Encoding]::UTF8)
 
 & $localPath install
