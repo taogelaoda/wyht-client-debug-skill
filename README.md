@@ -23,38 +23,51 @@
 | `SKILL.md` | 技能入口：触发条件、环境自检、快速参考、无 DevTools 时的日志通道、常见错误、红线 |
 | `cdp-recipes.md` | 按需加载的 CDP 配方：抓 POST 报文、临时导航并还原、退出客户端、PowerShell 发 CDP |
 | `scripts/check_env.py` | 只读环境自检，退出码 `0=直连 2=安装态 3=前置机 4=读取失败` |
-| `install.ps1` | 一键安装到项目：克隆（按需）+ 建目录联接，幂等、拒绝破坏实体目录 |
+| `bin/wyht-skill.ps1` | 命令本体：`install` / `status` |
+| `bin/wyht-skill.cmd` | 命令入口（cmd 包装，绕过执行策略） |
+| `bootstrap/` | 发给同事的那一对引导文件，复制到 `%LOCALAPPDATA%\wyht\bin` 后由它接管 |
 
-## 安装到项目
+## 安装（一次性引导，之后一条命令）
 
-技能仓库与使用它的项目解耦：项目里只放一个目录联接（junction），不复制文件。`install.ps1` 就是把这件事做成一条命令（Windows，不需要管理员）。
+技能仓库与使用它的项目解耦：仓库固定落在 `%LOCALAPPDATA%\wyht\skills\wyht-client-debug`，项目里只放一个目录联接（junction），不复制文件。
 
 ```powershell
-# 仓库已克隆：直接从仓库里跑（-Project 不写则是当前目录）
-D:\Document\wyht-client-debug-skill\install.ps1 -Project "<项目根目录>"
+# 一次性：把 bootstrap\ 这一对（wyht-skill.cmd + wyht-skill.ps1）复制到 %LOCALAPPDATA%\wyht\bin
+# 首次运行它会：克隆仓库 → 把该目录追加进 User PATH → 转交仓库里的安装器
 
-# 从零开始：本机还没有克隆时，指定目标路径让它自己 clone
-.\install.ps1 -Project "<项目根目录>" -RepoDir D:\Document\wyht-client-debug-skill
+# 之后在任意目录：
+wyht-skill install                        # 装到当前项目
+wyht-skill install -Project "<项目根>" -ClientDir "<客户端目录>"   # 顺带跑环境自检
+wyht-skill status                         # 版本 / 是否 dirty / 落后远端几个提交 / 当前项目指向哪
 ```
 
-脚本幂等，按目标现状分流：
+`install` 参数：`-Project`（默认当前目录）、`-ClientDir`（传了就执行 `check_env.py` 并打印摘要）、`-Ref`（默认 `main`，可切 tag/分支）、`-Force`。
 
-| 目标现状 | 行为 |
+行为的边界（都实测过）：
+
+| 场景 | 行为 |
 |---|---|
-| 不存在 | 建联接，打印技能版本与下一步命令 |
-| 已是指向本仓库的联接 | 报告后跳过（退出码 0），可当"检查是否装好"用 |
-| 指向别处的联接 / 实体目录 | **拒绝**并说明原因；确认要替换加 `-Force`（实体目录会先备份成 `*.bak-<时间戳>`） |
-| `-RepoDir` 不存在 | `git clone` 后继续装（约 2 秒） |
+| 目标不存在 | 建联接；打印版本、提交号、升级结果 |
+| 已指向同一个仓库 | 保持原联接不动（幂等） |
+| 指向**同源**旧联接（本仓库的旧位置） | 自动改指到 `%LOCALAPPDATA%`，并打印迁移行 |
+| 指向**异源**联接 / 占着实体目录 | **拒绝**；加 `-Force` 才动，实体目录先备份成 `*.bak-<时间戳>` |
+| 仓库有未提交改动 | 警告后继续；`pull --ff-only` 失败只标记"升级跳过"，安装照常完成 |
+| 内网不通 | 升级跳过，安装照常完成 |
 
-- 判定失败（拒绝替换）退出码为 1，可直接用在脚本里。
-- `git pull` 后技能立即生效，无需重建联接；换机器或换克隆路径时重跑一次即可。
-- **`install.ps1` 必须带 UTF-8 BOM 保存**：PowerShell 5.1 会把无 BOM 的脚本按本地 ANSI 解码，中文注释会直接导致语法错误。
-- 非 Windows（或不想用脚本）时手工等价操作：
+退出码：成功 0，任何拒绝或异常 1，可直接用在脚本里。
+
+注意：
+
+- **PATH 只改 User 级、只追加**，已含则跳过；新开终端才生效。
+- 所有 `.ps1` 必须带 **UTF-8 BOM**：PowerShell 5.1 会把无 BOM 脚本按本地 ANSI 解码，中文注释直接导致语法错误。
+- 原生 `git` 的 stderr 不能并进错误流（`2>&1`），否则 `ErrorActionPreference=Stop` 下会被当成终止错误。
+- 只支持 Windows：junction 是 Windows 概念。非 Windows 手工等价操作：
   ```bash
   git clone http://192.168.1.66:9999/zhugangtao/wyht-client-debug-skill.git <克隆目录>
-  cmd /c mklink /J "<项目>\.claude\skills\wyht-client-debug" "<克隆目录>"   # Linux/macOS: ln -s
+  ln -s "<克隆目录>" "<项目>/.claude/skills/wyht-client-debug"
   ```
 - **不要**把联接的内容复制进项目，否则又变成两份、`git pull` 也不再影响项目里那份。
+- 私有库的 raw 地址匿名访问会返回登录页，因此**不存在** `irm … | iex` 这种远程一键；首次拿仓库一定要过一次凭据（Windows 凭据管理器保存后不再问）。
 
 ## 与项目的契约
 

@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2.5.0
+
+- 新增 `wyht-skill` 命令：`install`（克隆/刷新仓库 → 建或改指联接 → 可选跑 `check_env.py`）与 `status`（版本、dirty、落后远端几个提交、当前项目指向哪）
+- 仓库位置固定到 `%LOCALAPPDATA%\wyht\skills\wyht-client-debug`；同源旧联接自动改指，异源或实体目录仍需 `-Force`
+- 新增 `bootstrap/` 引导器：发给同事一次，负责首次克隆与追加 User PATH，之后转交仓库内脚本，逻辑更新靠 `git pull`
+- **删除 `install.ps1`**，单一入口收敛到 `wyht-skill`
+- 修 README 的自相矛盾：此前"从零开始 `-RepoDir` 自动克隆"实际不可达（脚本得先存在），且私有库 raw 匿名不可读，`irm|iex` 不成立
+- 记两个 PowerShell 5.1 实测坑：`.ps1` 必须带 UTF-8 BOM；原生 `git` 的 stderr 用 `2>&1` 会被当作终止错误
+
 ## 2.4.0
 
 - 新增 `install.ps1`：一条命令把技能装进项目（按需 `git clone` + 建目录联接），幂等；已是指向本仓库的联接时直接报告跳过，指向别处或占着实体目录时拒绝，需 `-Force`（实体目录先备份成 `*.bak-<时间戳>`）
