@@ -14,7 +14,10 @@ export function findProjectFile(startDir) {
   let dir = path.resolve(startDir || process.cwd());
   for (;;) {
     const candidate = path.join(dir, PROJECT_FILE);
-    if (fs.existsSync(candidate)) return candidate;
+    // 同名目录不算配置文件，否则下游 JSON.parse 会 EISDIR
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch (e) { /* 不存在继续向上找 */ }
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -23,13 +26,19 @@ export function findProjectFile(startDir) {
 
 function readJson(file, fallback) {
   if (!fs.existsSync(file)) return fallback;
-  return JSON.parse(fs.readFileSync(file, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    throw new Error(file + ' 不是合法 JSON（' + err.message + '）；下一步：修复或删除该文件后重跑');
+  }
 }
 
-// 显式 'utf8' 且不带 BOM，避免 Windows 工具链额外写入 BOM
+// 先写临时文件再改名：clients.json 是机器级唯一真相，覆盖写被中断会留下半截 JSON
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n', 'utf8');
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, file);
 }
 
 export function readProject(rootDir) {
@@ -58,7 +67,7 @@ export function writeClients(file, value) {
 
 export function resolveClient(clients, name) {
   const list = (clients && clients.clients) || {};
-  const hit = list[name];
+  const hit = Object.prototype.hasOwnProperty.call(list, name) ? list[name] : undefined;
   if (!hit) {
     const names = Object.keys(list);
     throw new Error('客户端包「' + name + '」未登记。已登记：' + (names.length ? names.join('、') : '（空）') +
