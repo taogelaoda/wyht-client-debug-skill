@@ -1,5 +1,21 @@
 # 变更记录
 
+## 3.0.0
+
+- **命令面重构**：唯一入口改为 `bin/wyht-skill.mjs`（Node CLI，零 npm 依赖），按使用层级拆开——
+  - `install`（机器级）：刷新技能仓库 + 写 `%LOCALAPPDATA%\wyht\bin\wyht-skill.cmd` 入口；参数 `--repo-url` `--ref`
+  - `clients list|add <目录>|rm <名>`（机器级）：客户端包登记，`add` 支持 `--name` `--exe`
+  - `init`（项目级）：交互问 `webUrl` / `hisUserId`，写 `.wyht-skill.json`（并加进 `.gitignore`）、建 `.claude\skills\wyht-client-debug` 联接；参数 `--use` `--force`
+  - `check`：壳侧自检，`node:sqlite` 直读 `config.db`，退出码 `0` 直连 / `2` 安装态 / `3` 前置机 / `4` 读取失败
+  - `doctor`：进程、端口、本地前端、仓库落后、Node 版本
+  - `start`：冷启动（默认带 `?logCollect=1`），判定本地前端页确实加载才返回成功；参数 `--no-log` `--timeout`
+  - `stop`：壳 API 退出 + 两条验收（进程消失、9222 释放）
+- **两层配置**：项目级 `<项目根>\.wyht-skill.json`（向上发现）+ 机器级 `%LOCALAPPDATA%\wyht\clients.json`；业务参数（包路径、exe、前端地址）全由 CLI 读取，不再写进 `SKILL.md`
+- 要求 **Node ≥ 24**（用内建 `fetch` / `WebSocket` / `node:sqlite`，不再装任何依赖）；引导器在最前面加 Node 版本闸门，不满足就不克隆、不写入口
+- **删除 `scripts/check_env.py`**（并入 `wyht-skill check`，也不再需要 python）与旧 **`bin/wyht-skill.ps1`**（逻辑搬到 `bin/wyht-skill.mjs` + `bin/lib/*`）
+- **旧命令不静默兼容**：`status` → `doctor`，`install -Project/-ClientDir` → `install` + `init`，`install --force` 无强制对象——一律报错并给出新用法，不做兜底
+- 宿主陷阱全部保留：`/login` 导航整壳退出、`setZoomLevel` 整壳退出、`closeForm` 连主窗、`openNewBall` 换球、`Draggable` 全局持久化、CefSharp 手册不适用、`getLocalPrinters` 返回结构等
+
 ## 2.6.4
 
 - 克隆源改为 **Gitee 优先、GitHub 兜底**（此前 Gitee 入口下载到的脚本仍去 GitHub 拉仓库，GitHub 不通的网络会卡在克隆这一步）
