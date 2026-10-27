@@ -99,17 +99,29 @@ export async function cmdClients(args, env) {
 
 async function runGit(repo, args) {
   return new Promise((resolve) => {
-    const p = spawn('git', ['-C', repo].concat(args), { windowsHide: true });
+    const p = spawn('git', ['-C', repo].concat(args), {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: '0' }),
+    });
     let text = '';
+    let done = false;
+    const finish = (ok, message) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve({ ok, text: message });
+    };
+    // 黑洞远端会让 git 永远等下去：给硬超时，别让 install 卡住
+    const timer = setTimeout(() => {
+      try { p.kill(); } catch (e) { /* 忽略 */ }
+      finish(false, '超时（10s）');
+    }, 10000);
     p.stdout.on('data', (c) => { text += c; });
     p.stderr.on('data', (c) => { text += c; });
+    p.on('error', () => finish(false, 'git 不可用'));
     // 收成一行：git 的多行提示会冲散命令输出
-    const oneLine = () => {
-      const flat = text.replace(/\s+/g, ' ').trim();
-      return flat.length > 160 ? flat.slice(0, 160) + '…' : flat;
-    };
-    p.on('error', () => resolve({ ok: false, text: 'git 不可用' }));
-    p.on('close', (code) => resolve({ ok: code === 0, text: oneLine() }));
+    p.on('close', (code) => finish(code === 0, text.replace(/\s+/g, ' ').trim().slice(0, 160)));
   });
 }
 
@@ -124,21 +136,28 @@ export async function cmdInstall(args, env) {
   const nodeTarget = inStandardLayout
     ? '%~dp0..\\skills\\' + path.basename(repo) + '\\bin\\wyht-skill.mjs'
     : path.join(repo, 'bin', 'wyht-skill.mjs');
-  if (!inStandardLayout && /[^\x00-\x7f]/.test(nodeTarget)) {
-    throw new Error('仓库路径含非 ASCII 字符（' + nodeTarget + '）；下一步：把技能仓库放到纯 ASCII 路径，或改用引导器安装到 %LOCALAPPDATA%');
+  if (/[^\x00-\x7f]/.test(nodeTarget)) {
+    throw new Error('shim 路径含非 ASCII 字符（' + nodeTarget + '）；下一步：把技能仓库放到纯 ASCII 路径，或改用引导器安装到 %LOCALAPPDATA%');
   }
   // 先读 package.json：仓库不是 skill 仓库时在写任何文件之前就失败
   const pkg = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8'));
   // 刷新只在 git 仓库里做，失败只警告：装不装得上不取决于能不能联网
   let refresh = '未刷新（不是 git 仓库）';
   if (fs.existsSync(path.join(repo, '.git'))) {
+    let mayPull = true;
     if (args && args.ref) {
       const co = await runGit(repo, ['checkout', '--quiet', args.ref]);
-      if (!co.ok) console.error('警告：切不到 ' + args.ref + '（' + co.text + '），保持当前引用');
+      if (!co.ok) {
+        console.error('警告：切不到 ' + args.ref + '（' + co.text + '），保持当前引用');
+        refresh = '刷新跳过（切换引用失败）';
+        mayPull = false;
+      }
     }
-    const pull = await runGit(repo, ['pull', '--ff-only', '--quiet']);
-    refresh = pull.ok ? '已刷新' : '刷新跳过（' + pull.text + '）';
-    if (!pull.ok) console.error('警告：' + refresh);
+    if (mayPull) {
+      const pull = await runGit(repo, ['pull', '--ff-only', '--quiet']);
+      refresh = pull.ok ? '已刷新' : '刷新跳过（' + pull.text + '）';
+      if (!pull.ok) console.error('警告：' + refresh);
+    }
   }
   // .cmd 必须纯 ASCII：cmd.exe 按 OEM 解码，中文会被当成命令执行
   const shimText = '@echo off\r\n' +
