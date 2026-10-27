@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2.3.0
+
+- 修正导航建议：`Page.navigate` 到 `/login` 会被应用当作注销，壳走 `CloseAllWindows` **整壳退出**（实测）；"先导航到正常页再退出"这条限定为**非登录路由**
+- 新增三条宿主 API 陷阱：悬浮球全客户端唯一（`openNewBall` 会先关旧球再重建，替换掉真球）；`initObj.closeForm(名字)` 连主窗一起关（关当前窗体用 `closeCurrentForm`）；`Draggable` 是持久化全局设置（`WebSetting.Draggable`），与窗体无关、改过要恢复
+- 新增「无 DevTools 时先看日志通道」：优先用项目的日志采集服务，排查顺序为 采集开关 → 服务监听 → 上报地址；仅覆盖 console 与前端异常，报文仍走 CDP
+- description 补日志采集场景，便于在没有 DevTools 的情境下也能触发本技能
+
 ## 2.2.0
 
 - 新增「版本背景」：≥3.0.0 为 C++ 原生 CEF 壳、<3.0.0 为 C# 壳；冷/热启动只有 ≥3.1.0 才有，更早版本每次启动都是全新实例

@@ -1,7 +1,7 @@
 ---
 name: wyht-client-debug
-description: 当需要在真实 CEF 医生客户端里验证前端改动、抓取请求报文、或重启客户端加载本地代码时使用；按版本分流（≥3.0 为 C++ 壳、<3.0 为 C# 壳，冷/热启动只有 ≥3.1.0 才有），也适用于 9222 端口只见 about:blank、热启动改不动页面、以及准备改 config.db / hosts / 杀进程绕过客户端限制的场景。
-version: "2.2.0"
+description: 当需要在真实 CEF 医生客户端里验证前端改动、抓取请求报文、或重启客户端加载本地代码时使用；按版本分流（≥3.0 为 C++ 壳、<3.0 为 C# 壳，冷/热启动只有 ≥3.1.0 才有），也适用于宿主内页打不开 DevTools 需要走日志采集、9222 端口只见 about:blank、热启动改不动页面、以及准备改 config.db / hosts / 杀进程绕过客户端限制的场景。
+version: "2.3.0"
 license: MIT
 metadata:
   hermes:
@@ -63,10 +63,18 @@ python .claude/skills/wyht-client-debug/scripts/check_env.py --dir "<客户端�
 | 退出验收 | 进程消失 + 9222 不再 Listen + 新 PID 不同，三条同时成立 | 只看命令返回成功 |
 | 列窗口 | `http://127.0.0.1:9222/json/list` | `localhost:9222`（`[::1]` 上另一个 Chrome，只见 `about:blank`） |
 | 抓请求体 | `Network.enable`（设 `maxPostDataSize`）→ `Network.getRequestPostData` | 只读 `requestWillBeSent.postData`（常为空） |
-| 开新页面 | 对已有窗口 `Page.navigate`，先存 `Page.getNavigationHistory` | `PUT /json/new`、`Target.createTarget`（CEF 返回 `Not supported`） |
+| 开新页面 | 对已有窗口 `Page.navigate`（先存 `Page.getNavigationHistory`），**目标选当前域的非登录路由** | `PUT /json/new`、`Target.createTarget`（CEF 返回 `Not supported`）；导航到 `/login`（应用当作注销，整壳退出） |
 | 热启动传参（**仅 ≥3.1.0**） | 新进程转发参数给已运行实例后退出 | 以为热启动会重载页面 URL；在 <3.1.0 上指望它复用实例 |
 
 具体 CDP frame、PowerShell 连接方式、导航还原步骤：按需读 `cdp-recipes.md`。
+
+## 无 DevTools 时先看日志通道
+
+宿主内嵌页面开不了 DevTools 时，先走项目的日志采集服务：页面侧 `console` 与 `window.onerror` 上报到本机端口，带实时看板回放，比硬上 CDP 省事。
+
+- 地址、端口、开关、看板 URL **以项目 `AGENTS.md` 为准**（例：`frontend/log-service`，`npm start` 后看板 `http://127.0.0.1:9321/`，采集默认关闭、需 `?logCollect=1` 或宿主注入 `window.__LOG_COLLECT__`）。
+- 日志出不来时按这个顺序查：**采集开关是否开 → 服务是否在监听 → 上报地址是否解析到本机**。别一上来就怀疑注入脚本没生效。
+- 它只覆盖 `console` 与前端异常；报文级问题（请求体、响应头）仍要走 CDP。
 
 ## 常见错误
 
@@ -78,7 +86,11 @@ python .claude/skills/wyht-client-debug/scripts/check_env.py --dir "<客户端�
 | 看到 `ServerUrl` 有值就认为装过了 | 判定只看 `IsFirstRun`；`ServerUrl` 可能是装到一半的残留 |
 | 手改 `IsFirstRun=false` 图省事 | 会留下缺 `ClientType`/`HospitalId`/`HospitalUserName` 的半装状态 |
 | 连点两次 exe 想"确保启动"（≥3.1.0） | 第二次是热启动转发，会覆盖/丢弃第一次的冷启动参数。更早版本会起第二个进程，两个实例争 9222 |
-| 没有可用页面就不敢退出 | 先导航到一个正常页（记原 URL）再调壳 API；不要改用杀进程 |
+| 没有可用页面就不敢退出 | 先 `Page.getNavigationHistory` 记原 URL，导航到**非登录路由**再调壳 API；不要改用杀进程，也别拿登录页当载体 |
+| 从已登录页导航到 `/login` 想"回到登录页" | 应用把这次导航当注销：壳打印 `CloseAllWindows → All windows closed → Exiting application`，**整个客户端退出**（实测 17:02:55）。要回登录页就退出后冷启动 |
+| 用 `initObj.closeForm(名字)` 关某个子窗 | 会连主窗一起关（`CloseAllWindows`）→ 客户端退出。关**当前**窗体用 `closeCurrentForm`（SDK 的 `closeForm()` 就是它） |
+| 想用 `openNewBall` 再开一个球做实验 | 悬浮球**全客户端唯一**：宿主日志 `openNewBall: 悬浮球已存在，先关闭旧球再按新参数重建`——真球会被替换掉。要验证球状态就改现成的球 |
+| 把 `Draggable` 当窗体属性排查 | 它是**持久化全局设置**（落 `config.db` 的 `WebSetting.Draggable`），最后写入者生效、与窗体无关；手工改过要恢复，否则污染这台机器 |
 | 为了验证缩放去调 `setZoomLevel` | 本机构建实测：传 `1` 或 `0` 都会**直接退出整个客户端**（3/3 复现），只做 `typeof` 检查，不要执行 |
 | 把 `getLocalPrinters()` 当数组 | 实际返回 `{code,datas:[{printName}],message,success}` 的 JSON 字符串，名字在 `datas[].printName` |
 
@@ -87,7 +99,8 @@ python .claude/skills/wyht-client-debug/scripts/check_env.py --dir "<客户端�
 - 演示/联调窗口内改 hosts、重写 `config.db`、删除 User Data
 - 用 `localhost` 访问调试端口
 - 没核对新 PID 与端口监听，就宣布"已经重启"
-- 没记录原 URL 就导航已有窗口
+- 没记录原 URL 就导航已有窗口；把 `/login` 当"中立页"导航（会退整个客户端）
+- 用 `closeForm(名字)` 关子窗（连主窗一起关）、用 `openNewBall` 造第二个球（替换掉真球）
 - 用杀进程代替壳 API 退出，然后直接冷启动（≥3.1.0 时参数会被残留实例吃掉）
 - 在非基层安装形态的机器上跑装机向导（会写死 `ClientType`）
 
