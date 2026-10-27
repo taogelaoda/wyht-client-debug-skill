@@ -8,6 +8,10 @@ import { deriveClient, versionSemantics, detectExe } from './derive.mjs';
 import {
   clientsFilePath, readClients, writeClients, resolveClient, writeProject, ensureGitignore,
 } from './config.mjs';
+import { listeningPorts, portListening, processesByName, httpStatus, sleep } from './probe.mjs';
+import { listPages, pickPage, evaluate, waitForPage } from './cdp.mjs';
+import { readShellConfig, classify, checkExitCode } from './shellconfig.mjs';
+import { buildDoctorReport, buildStartUrl, startPreflight, stopVerdict } from './actions.mjs';
 
 export function addClientEntry(store, dir, options) {
   const opts = options || {};
@@ -220,4 +224,161 @@ export async function cmdInit(args, projectRoot, project, env) {
     '  下一步：wyht-skill check',
   ]);
   return 0;
+}
+
+export function resolvePorts(ports) {
+  return {
+    9222: ports.indexOf(9222) !== -1,
+    8080: ports.indexOf(8080) !== -1,
+    9321: ports.indexOf(9321) !== -1,
+  };
+}
+
+export function resolveProcesses(rows, names) {
+  return (rows || []).filter((r) => names.indexOf(r.name) !== -1);
+}
+
+function git(repo, args) {
+  return new Promise((resolve) => {
+    const p = spawn('git', args, { cwd: repo });
+    let text = '';
+    p.stdout.on('data', (c) => { text += c; });
+    p.on('error', () => resolve(null));
+    p.on('close', (code) => resolve(code === 0 ? text : null));
+    setTimeout(() => resolve(null), 5000);
+  });
+}
+
+export async function remoteBehind(repo) {
+  await git(repo, ['fetch', '--quiet', 'origin']);
+  const counts = await git(repo, ['rev-list', '--left-right', '--count', 'HEAD...origin/main']);
+  if (!counts) return null;
+  const parts = counts.trim().split(/\s+/);
+  return { ahead: parseInt(parts[0], 10) || 0, behind: parseInt(parts[1], 10) || 0 };
+}
+
+export async function cmdCheck(args, client, env) {
+  const dbPath = path.join(client.dir, 'config.db');
+  if (!fs.existsSync(dbPath)) {
+    env.out('check · 读取失败', [
+      '  找不到 ' + dbPath,
+      '  下一步：wyht-skill clients list 确认登记的目录；换包后重新 clients add',
+    ]);
+    return 4;
+  }
+  let cfg;
+  try {
+    cfg = readShellConfig(dbPath);
+  } catch (err) {
+    env.out('check · 读取失败', [
+      '  ' + (err && err.message ? err.message : err),
+      '  下一步：确认客户端未被占用、database 文件未损坏',
+    ]);
+    return 4;
+  }
+  const verdict = classify(cfg);
+  const version = deriveClient(client.dir).version;
+  env.out('check · ' + verdict.env, [
+    '  客户端 ' + client.dir,
+    '  版本   ' + (version || '未识别') + '（' + versionSemantics(version).text + '）',
+    '  ServerUrl ' + (cfg.ServerUrl || '<空>') + '  HospitalId ' + (cfg.HospitalId || '<空>'),
+    '  判定   ' + verdict.reason,
+  ]);
+  return checkExitCode(verdict.env);
+}
+
+export async function cmdDoctor(args, project, client, env) {
+  const ports = resolvePorts((await listeningPorts()) || []);
+  const procs = resolveProcesses(await processesByName([client.exe]), [client.exe, 'czht.exe', 'iu.Hrball.exe']);
+  const webStatus = await httpStatus(project.webUrl + '/');
+  const pages = await listPages();
+  const delta = await remoteBehind(env.repoDir);
+  const pkg = JSON.parse(fs.readFileSync(path.join(env.repoDir, 'package.json'), 'utf8'));
+  env.out('doctor · 已收集', buildDoctorReport({
+    nodeVersion: process.version,
+    pythonVersion: null,
+    repoVersion: pkg.version,
+    behind: delta ? delta.behind : null,
+    ports,
+    processes: procs,
+    webStatus,
+    pages,
+    webUrl: project.webUrl,
+  }));
+  return 0;
+}
+
+export async function cmdStart(args, project, client, env) {
+  const ports = (await listeningPorts()) || [];
+  const webStatus = await httpStatus(project.webUrl + '/');
+  const pages = await listPages();
+  const pre = startPreflight({ port9222: ports.indexOf(9222) !== -1, webStatus, pages, webUrl: project.webUrl });
+  if (pre.exitCode !== 0) {
+    env.out('start · 前置条件未满足', [pre.message]);
+    return pre.exitCode;
+  }
+  const url = buildStartUrl({ webUrl: project.webUrl, hisUserId: project.hisUserId, log: args.log });
+  const child = spawn(path.join(client.dir, client.exe), ['--url=' + url], {
+    cwd: client.dir, detached: true, stdio: 'ignore',
+  });
+  child.unref();
+  const timeoutMs = (args.timeout || 30) * 1000;
+  const hit = await waitForPage((list) => pickPage(list, project.webUrl), { timeoutMs });
+  if (!hit) {
+    env.out('start · 失败', [
+      '  ' + Math.round(timeoutMs / 1000) + 's 内没等到加载本地前端的页面',
+      '  日志目录 ' + path.join(client.dir, 'logs'),
+      '  下一步：wyht-skill doctor 看端口与进程；确认 dev server 与客户端都没被占用',
+    ]);
+    return 1;
+  }
+  const stateFile = path.join(path.dirname(clientsFilePath()), 'state.json');
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  fs.writeFileSync(stateFile, JSON.stringify({ lastPid: child.pid, webUrl: project.webUrl, at: Date.now() }, null, 2), 'utf8');
+  env.out('start · 成功', [
+    '  PID  ' + child.pid,
+    '  页面 ' + hit.url,
+    '  包   ' + (args.client || project.client),
+    '  下一步：操作复现；页面日志看 frontend/log-service 看板（9321）',
+  ]);
+  return 0;
+}
+
+export async function cmdStop(args, project, client, env) {
+  const pages = await listPages();
+  const page = pickPage(pages, project.webUrl);
+  if (!page) {
+    env.out('stop · 前置条件未满足', [
+      '  9222 上没有可用的业务页面：' + JSON.stringify((pages || []).map((p) => p.url)),
+      '  下一步：按 skill 红线人工处理（不要用 taskkill 代替壳 API）',
+    ]);
+    return 3;
+  }
+  const timeoutMs = (args.timeout || 15) * 1000;
+  // evaluate 返回 CDP 原样结构，这里只关心调用有没有抛错
+  try {
+    await evaluate(page, 'initObj.exitApplication()', { timeoutMs });
+  } catch (err) {
+    env.out('stop · 失败', [
+      '  页面 ' + page.url,
+      '  ' + (err && err.message ? err.message : err),
+      '  下一步：wyht-skill doctor 确认 9222 上列出的页面是本地前端；必要时按 skill 红线人工处理',
+    ]);
+    return 1;
+  }
+  const deadline = Date.now() + timeoutMs;
+  let verdict = { exitCode: 1, message: '未完成验收' };
+  for (;;) {
+    const procs = await processesByName([client.exe]);
+    const listening = await portListening(9222);
+    verdict = stopVerdict({
+      processAlive: procs === null ? null : procs.length > 0,
+      portListening: listening,
+      processes: procs,
+    });
+    if (verdict.exitCode === 0 || Date.now() > deadline) break;
+    await sleep(500);
+  }
+  env.out('stop · ' + (verdict.exitCode === 0 ? '成功' : '未通过'), ['  页面 ' + page.url, verdict.message]);
+  return verdict.exitCode;
 }
