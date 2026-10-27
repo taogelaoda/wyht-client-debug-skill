@@ -3,7 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { findProjectFile, readClients, resolveClient, clientsFilePath } from './lib/config.mjs';
+import { findProjectFile, readProject, readClients, resolveClient, clientsFilePath } from './lib/config.mjs';
 import {
   cmdInstall, cmdClients, cmdInit, cmdCheck, cmdDoctor, cmdStart, cmdStop,
 } from './lib/commands.mjs';
@@ -52,7 +52,11 @@ export function parseArgs(argv) {
     else if (token === '--use') args.use = list[++i];
     else if (token === '--ref') args.ref = list[++i];
     else if (token === '--repo-url') args.repoUrl = list[++i];
-    else if (token === '--timeout') args.timeout = parseInt(list[++i], 10);
+    else if (token === '--timeout') {
+      args.timeout = parseInt(list[++i], 10);
+      if (isNaN(args.timeout)) throw new Error('未知选项的值：--timeout 需要秒数');
+    }
+    else if (token.indexOf('--') === 0) throw new Error('未知选项：' + token + '（用 --help 查看可用选项）');
     else args.rest.push(token);
   }
   return args;
@@ -64,7 +68,7 @@ export function legacyError(argv) {
   if (has('--project') || has('-project') || has('--client-dir') || has('-clientdir')) {
     return 'install 不再接受项目/客户端参数：机器级用 wyht-skill install；项目级用 wyht-skill init（交互式写配置）';
   }
-  if (has('install') && has('--force')) {
+  if (has('install') && (has('--force') || has('-force'))) {
     return 'install 没有需要强制的对象：强制语义只在 init（异源联接 / 实体目录）上有效';
   }
   return null;
@@ -105,7 +109,16 @@ async function main() {
   if (args.command === 'clients') return cmdClients(args, env);
 
   const projectFile = findProjectFile(projectRoot);
-  const project = projectFile ? JSON.parse(fs.readFileSync(projectFile, 'utf8')) : null;
+  let project = null;
+  if (projectFile) {
+    try {
+      project = readProject(path.dirname(projectFile));
+    } catch (err) {
+      env.err(args.command + ' · 配置损坏');
+      console.error('  ' + (err && err.message ? err.message : err));
+      return 3;
+    }
+  }
 
   if (args.command === 'init') return cmdInit(args, projectRoot, project, env);
 
@@ -115,7 +128,14 @@ async function main() {
     console.error('  下一步：在项目根运行 wyht-skill init');
     return 3;
   }
-  const client = resolveClient(readClients(clientsFilePath()), args.client || project.client);
+  let client;
+  try {
+    client = resolveClient(readClients(clientsFilePath()), args.client || project.client);
+  } catch (err) {
+    env.err(args.command + ' · 客户端未登记');
+    console.error('  ' + (err && err.message ? err.message : err));
+    return 3;
+  }
 
   if (args.command === 'check') return cmdCheck(args, client, env);
   if (args.command === 'doctor') return cmdDoctor(args, project, client, env);
@@ -124,7 +144,8 @@ async function main() {
   return 1;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(selfDir(), 'wyht-skill.mjs')) {
+// import.meta.url 是 realpath，argv[1] 是字面路径：经 junction 调用时只有 realpath 比较才相等
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
   main().then((code) => process.exit(code || 0)).catch((err) => {
     console.error('wyht-skill · 失败');
     console.error('  ' + (err && err.message ? err.message : err));

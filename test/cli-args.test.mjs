@@ -17,6 +17,8 @@ export default [
     fn: () => {
       assert.strictEqual(parseArgs([]).command, 'install');
       assert.throws(() => parseArgs(['bogus']), /未知子命令/);
+      assert.throws(() => parseArgs(['start', '--bogus']), /未知选项/);
+      assert.throws(() => parseArgs(['start', '--timeout']), /需要秒数/);
     },
   },
   {
@@ -25,6 +27,7 @@ export default [
       assert.ok(legacyError(['install', '--project', 'X']).indexOf('init') !== -1);
       assert.ok(legacyError(['status']).indexOf('doctor') !== -1);
       assert.ok(legacyError(['install', '--force']).indexOf('init') !== -1);
+      assert.ok(legacyError(['install', '-force']).indexOf('init') !== -1);
       assert.strictEqual(legacyError(['start']), null);
     },
   },
