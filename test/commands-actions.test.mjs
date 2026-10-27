@@ -1,6 +1,6 @@
 // test/commands-actions.test.mjs —— actions 接线的纯函数判定
 import assert from 'assert';
-import { resolvePorts, resolveProcesses } from '../bin/lib/commands.mjs';
+import { resolvePorts, resolveProcesses, startProcessCommand } from '../bin/lib/commands.mjs';
 import { matchLocalPage, startPreflight, stopVerdict, buildDoctorReport } from '../bin/lib/actions.mjs';
 
 export default [
@@ -22,6 +22,11 @@ export default [
       const unknown = buildDoctorReport({ ports: null, processes: null, behind: null, pages: [], webStatus: 0 });
       assert.ok(unknown.some((l) => l.indexOf('端口') !== -1 && l.indexOf('未知') !== -1));
       assert.ok(unknown.some((l) => l.indexOf('壳进程') !== -1 && l.indexOf('未知') !== -1));
+      // 客户端清单 requireAdministrator：必须走 Start-Process（ShellExecute，弹 UAC），不能 CreateProcess
+      const launch = startProcessCommand('C:\\wyht\\czht.exe', 'http://localhost:8080/yl-client-web/login', 'C:\\wyht');
+      assert.ok(launch.indexOf('Start-Process') === 0);
+      assert.ok(launch.indexOf('-PassThru') !== -1);
+      assert.ok(launch.indexOf('--url=http://localhost:8080/yl-client-web/login') !== -1);
     },
   },
   {

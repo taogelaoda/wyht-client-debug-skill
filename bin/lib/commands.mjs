@@ -296,7 +296,6 @@ export async function cmdDoctor(args, project, client, env) {
   const pkg = JSON.parse(fs.readFileSync(path.join(env.repoDir, 'package.json'), 'utf8'));
   env.out('doctor · 已收集', buildDoctorReport({
     nodeVersion: process.version,
-    pythonVersion: null,
     repoVersion: pkg.version,
     behind: delta ? delta.behind : null,
     ports,
@@ -306,6 +305,37 @@ export async function cmdDoctor(args, project, client, env) {
     webUrl: project.webUrl,
   }));
   return 0;
+}
+
+export function startProcessCommand(exePath, url, cwd) {
+  return 'Start-Process -FilePath ' + JSON.stringify(exePath) +
+    ' -ArgumentList ' + JSON.stringify('--url=' + url) +
+    ' -WorkingDirectory ' + JSON.stringify(cwd) +
+    ' -PassThru | Select-Object -ExpandProperty Id';
+}
+
+// 客户端清单常声明 requireAdministrator：Node 的 CreateProcess 直接 EACCES，
+// 必须交给 ShellExecute（Start-Process）才会弹 UAC 提权
+function launchClient(exePath, url, cwd) {
+  return new Promise((resolve) => {
+    const command = startProcessCommand(exePath, url, cwd);
+    const ps = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true });
+    let out = '';
+    let err = '';
+    let done = false;
+    const finish = (result) => { if (!done) { done = true; clearTimeout(timer); resolve(result); } };
+    const timer = setTimeout(() => {
+      try { ps.kill(); } catch (e) { /* 忽略 */ }
+      finish({ ok: false, pid: null, text: '启动超时（UAC 未响应？）' });
+    }, 60000);
+    ps.stdout.on('data', (c) => { out += c; });
+    ps.stderr.on('data', (c) => { err += c; });
+    ps.on('error', () => finish({ ok: false, pid: null, text: 'powershell 不可用' }));
+    ps.on('close', (code) => {
+      const pid = parseInt(String(out).trim().split(/\s+/).pop(), 10);
+      finish({ ok: code === 0 && !isNaN(pid), pid: isNaN(pid) ? null : pid, text: (err || out).trim().slice(0, 200) });
+    });
+  });
 }
 
 export async function cmdStart(args, project, client, env) {
@@ -333,11 +363,15 @@ export async function cmdStart(args, project, client, env) {
     return pre.exitCode;
   }
   const url = buildStartUrl({ webUrl: project.webUrl, hisUserId: project.hisUserId, log: args.log });
-  const child = spawn(exePath, ['--url=' + url], {
-    cwd: client.dir, detached: true, stdio: 'ignore',
-  });
-  child.on('error', (err) => console.error('警告：启动失败 ' + (err && err.message ? err.message : err)));
-  child.unref();
+  const launched = await launchClient(exePath, url, client.dir);
+  if (!launched.ok) {
+    env.out('start · 失败', [
+      '  启动客户端失败：' + (launched.text || '未知原因'),
+      '  下一步：以管理员身份打开终端重试（该客户端清单要求提升，会弹 UAC）',
+    ]);
+    return 1;
+  }
+  const childPid = launched.pid;
   const timeoutMs = (args.timeout || 30) * 1000;
   // pickPage 兜底会退回 list[0]（过渡页、安装态 file://），必须把本地判定内联进谓词，
   // 否则第一个非 about 页面就会让等待提前结束、然后被误当成失败
@@ -349,11 +383,11 @@ export async function cmdStart(args, project, client, env) {
     // 这是我们自己拉起的进程：失败要留痕并回收，否则 9222 被它占住，下一次 start 必然 3
     const stateFileEarly = path.join(path.dirname(clientsFilePath()), 'state.json');
     fs.mkdirSync(path.dirname(stateFileEarly), { recursive: true });
-    fs.writeFileSync(stateFileEarly, JSON.stringify({ lastPid: child.pid, webUrl: project.webUrl, at: Date.now(), startFailed: true }, null, 2), 'utf8');
-    try { child.kill(); } catch (e) { /* 忽略 */ }
+    fs.writeFileSync(stateFileEarly, JSON.stringify({ lastPid: childPid, webUrl: project.webUrl, at: Date.now(), startFailed: true }, null, 2), 'utf8');
+    try { spawn('taskkill', ['/PID', String(childPid), '/T', '/F'], { windowsHide: true }); } catch (e) { /* 忽略 */ }
     env.out('start · 失败', [
       '  ' + Math.round(timeoutMs / 1000) + 's 内没等到加载本地前端的页面（' + project.webUrl + '）',
-      '  PID ' + child.pid + '（已尝试结束；若仍占着 9222 用 wyht-skill stop）',
+      '  PID ' + childPid + '（已尝试结束；若仍占着 9222 用 wyht-skill stop）',
       '  日志目录 ' + path.join(client.dir, 'logs'),
       '  下一步：wyht-skill doctor 看端口与进程；确认 dev server 与客户端都没被占用',
     ]);
@@ -361,9 +395,9 @@ export async function cmdStart(args, project, client, env) {
   }
   const stateFile = path.join(path.dirname(clientsFilePath()), 'state.json');
   fs.mkdirSync(path.dirname(stateFile), { recursive: true });
-  fs.writeFileSync(stateFile, JSON.stringify({ lastPid: child.pid, webUrl: project.webUrl, at: Date.now() }, null, 2), 'utf8');
+  fs.writeFileSync(stateFile, JSON.stringify({ lastPid: childPid, webUrl: project.webUrl, at: Date.now() }, null, 2), 'utf8');
   env.out('start · 成功', [
-    '  PID  ' + child.pid,
+    '  PID  ' + childPid,
     '  页面 ' + hit.url,
     '  包   ' + (args.client || project.client),
     '  下一步：操作复现；页面日志看 frontend/log-service 看板（9321）',
