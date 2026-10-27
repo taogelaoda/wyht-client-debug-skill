@@ -1,5 +1,11 @@
 # 变更记录
 
+## 2.6.3
+
+- Gitee 镜像已建立并公开：`https://gitee.com/zhu-gangtao/wyht-client-debug-skill`，README 一键命令改为 Gitee 优先、GitHub 备选
+- 记 Gitee 建仓的两个坑：空仓库不能直接设为公开（需先推内容）；更新仓库接口必须带 `name`，否则报 `name is missing`
+- 记 Gitee raw 行为：URL 会 302 到 `raw.giteeusercontent.com`，`irm` 自动跟随
+
 ## 2.6.2
 
 - README 增「网络可达性」：本机实测 Gitee 可用、`objects.githubusercontent.com` 可用、`raw.githubusercontent.com` 与 `github.com:443` 时通时不通、jsDelivr 不可达

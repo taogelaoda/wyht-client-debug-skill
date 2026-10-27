@@ -29,19 +29,27 @@
 
 ## 一键下载（外网，无需预先克隆）
 
+国内网络优先这条（Gitee 镜像，实测可达）：
+
 ```powershell
 # 零参：装到当前目录。会克隆仓库到 %LOCALAPPDATA%\wyht\skills\wyht-client-debug、
 # 放好 wyht-skill 命令入口、把入口目录加进 User PATH
-irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/get.ps1 | iex
+irm https://gitee.com/zhu-gangtao/wyht-client-debug-skill/raw/main/get.ps1 | iex
 
 # 带参：先落盘再执行（iex 传不了参数，所以拆两步）
-irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/bootstrap/wyht-skill.ps1 -OutFile $env:TEMP\wyht.ps1
+irm https://gitee.com/zhu-gangtao/wyht-client-debug-skill/raw/main/bootstrap/wyht-skill.ps1 -OutFile $env:TEMP\wyht.ps1
 & $env:TEMP\wyht.ps1 install -Project "<项目根>" -ClientDir "<客户端目录>"
 ```
 
-两个入口的分工：`get.ps1` 是 `irm|iex` 专用（纯 ASCII、无 BOM，因为管道执行时 BOM 会粘到第一个 token 上导致解析失败），它把带 BOM 的 bootstrap 落到 `%TEMP%` 再执行；带参数时用上面的 `-OutFile` 两步写法。
+GitHub 作为备选（网络允许时可用）：
 
-> 实测注意：GitHub raw 有 CDN 缓存，刚 push 完可能仍在发上一版（本次实测 10 分钟未刷新，加 `?x=1` 也不生效）。这不影响使用——`get.ps1` 只负责下载 bootstrap——但**改 `get.ps1` 本身后要等缓存过期才对外生效**。
+```powershell
+irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/get.ps1 | iex
+```
+
+两个入口的分工：`get.ps1` 是 `irm|iex` 专用（纯 ASCII、无 BOM，因为管道执行时 BOM 会粘到第一个 token 上导致解析失败），它把带 BOM 的 bootstrap 落到 `%TEMP%` 再执行；带参数时用 `-OutFile` 两步写法。
+
+> 实测注意：GitHub raw 有 CDN 缓存，刚 push 完可能仍在发上一版（实测 10 分钟未刷新，加 `?x=1` 也不生效）；Gitee raw 会 302 到 `raw.giteeusercontent.com`，`irm` 会自动跟随。改 `get.ps1` 本身后要等缓存过期才对外生效。
 
 装完之后在任何目录都是这条：
 
@@ -56,25 +64,17 @@ wyht-skill status               # 版本 / 是否 dirty / 落后远端几个提�
 
 | 目标 | 结果 |
 |---|---|
-| `gitee.com` | ✅ 200，约 5s |
+| `gitee.com` / `raw.giteeusercontent.com` | ✅ 200，约 0.3–5 s |
 | `objects.githubusercontent.com`（zip 下载用） | ✅ 可达 |
 | `raw.githubusercontent.com` | ⚠️ 时通时不通（同一网络内半小时内两种结果都出现过） |
 | `github.com:443`（git push 用） | ⚠️ 同上，时通时不通 |
 | `cdn.jsdelivr.net` | ❌ 连不上 |
 
-结论：**国内网络请优先用 Gitee 镜像的一键命令**，GitHub 那条作为备选。建立镜像只需两步（在你的 Gitee 账号下）：
+结论：**国内网络用 Gitee 那条，GitHub 只作备选。** 三个远端都已配好：
 
 ```bash
-# 1. 在 https://gitee.com 新建公开空仓库 wyht-client-debug-skill（不要初始化 README）
-# 2. 本机推送（把 <你的Gitee用户名> 换掉）
-git remote add gitee https://gitee.com/<你的Gitee用户名>/wyht-client-debug-skill.git
-git push gitee main
-```
-
-之后同事用 Gitee 的一键命令：
-
-```powershell
-irm https://gitee.com/<你的Gitee用户名>/wyht-client-debug-skill/raw/main/get.ps1 | iex
+git push             # origin 双推：内网 GitLab + GitHub
+git push gitee main  # Gitee 镜像（SSH，密钥已在 Gitee 登记）
 ```
 
 ### 内网用户
