@@ -127,6 +127,18 @@ if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'SKILL.md'))) {
     }
 }
 
+# 仓库已存在时先刷新：2.x 的旧克隆没有 js CLI，靠这一步拿到
+if ((Test-Path -LiteralPath (Join-Path $RepoDir '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & git -C $RepoDir pull --ff-only --quiet 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warning '引导器刷新仓库失败（不影响已装版本），继续使用本地副本' }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
 if (-not (Test-Path -LiteralPath $Cli)) {
     Write-Error "仓库里缺少 bin\wyht-skill.mjs，先 git -C `"$RepoDir`" pull 再试"
     exit 1
