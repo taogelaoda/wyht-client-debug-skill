@@ -24,13 +24,14 @@ export const HELP = [
   '  start                  冷启动并确认加载本地前端',
   '  stop                   壳 API 退出并验收',
   '',
-  '选项：--client <名> --no-log --timeout <秒> --force --name <名> --exe <文件名> --use <名> --repo-url <地址> --ref <tag/分支> --help',
+  '选项：--client <名> --no-log --timeout <秒> --force --name <名> --exe <文件名> --use <名> --web-url <地址> --his-user-id <ID> --repo-url <地址> --ref <tag/分支> --help',
 ].join('\n');
 
 export function parseArgs(argv) {
   const args = {
     command: 'install', sub: null, rest: [], log: true, timeout: null,
     client: null, name: null, exe: null, use: null, ref: null, repoUrl: null, force: false, help: false,
+    webUrl: null, hisUserId: null,
   };
   const list = argv.slice();
   if (list.length && list[0].charAt(0) !== '-') {
@@ -50,6 +51,8 @@ export function parseArgs(argv) {
     else if (token === '--name') args.name = list[++i];
     else if (token === '--exe') args.exe = list[++i];
     else if (token === '--use') args.use = list[++i];
+    else if (token === '--web-url') args.webUrl = list[++i];
+    else if (token === '--his-user-id') args.hisUserId = list[++i];
     else if (token === '--ref') args.ref = list[++i];
     else if (token === '--repo-url') args.repoUrl = list[++i];
     else if (token === '--timeout') {

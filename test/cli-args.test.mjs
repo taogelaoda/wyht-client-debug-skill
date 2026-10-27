@@ -10,6 +10,13 @@ export default [
       assert.strictEqual(a.client, '内蒙古');
       assert.strictEqual(a.log, false);
       assert.strictEqual(a.timeout, 45);
+      // init 的非交互参数
+      const b = parseArgs(['init', '--use', '3.1.1-x64', '--web-url', 'http://localhost:8080/yl-client-web', '--his-user-id', 'zgt']);
+      assert.strictEqual(b.command, 'init');
+      assert.strictEqual(b.use, '3.1.1-x64');
+      assert.strictEqual(b.webUrl, 'http://localhost:8080/yl-client-web');
+      assert.strictEqual(b.hisUserId, 'zgt');
+      assert.strictEqual(parseArgs(['init']).webUrl, null);
     },
   },
   {
@@ -36,6 +43,9 @@ export default [
     fn: () => {
       ['install', 'clients', 'init', 'check', 'doctor', 'start', 'stop'].forEach((c) => {
         assert.ok(HELP.indexOf(c) !== -1, 'HELP 缺少 ' + c);
+      });
+      ['--web-url', '--his-user-id', '--use'].forEach((o) => {
+        assert.ok(HELP.indexOf(o) !== -1, 'HELP 缺少 ' + o);
       });
     },
   },

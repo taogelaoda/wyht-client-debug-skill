@@ -41,7 +41,10 @@ function ask(question, defaultValue) {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     let answered = false;
     rl.once('close', () => {
-      if (!answered) reject(new Error('没有读到输入；下一步：在终端里交互运行 wyht-skill init，或先手写 .wyht-skill.json'));
+      // 管道喂空行时 question 回调可能与 close 落在同一 tick：延后一拍再判未作答
+      setImmediate(() => {
+        if (!answered) reject(new Error('没有读到输入；下一步：在终端里交互运行 wyht-skill init，或加 --web-url/--his-user-id'));
+      });
     });
     rl.question(question + (defaultValue ? '（默认 ' + defaultValue + '）' : '') + '：', (answer) => {
       answered = true;
@@ -193,8 +196,15 @@ export async function cmdInit(args, projectRoot, project, env) {
     console.error('  下一步：wyht-skill clients add "<客户端目录>"');
     return 3;
   }
+  const nonInteractive = !process.stdin.isTTY;
   const existing = project || { version: 1 };
-  const chosen = args.use || existing.client || (names.length === 1 ? names[0] : await pickClient(names));
+  const chosen = args.use || existing.client
+    || (names.length === 1 ? names[0] : (nonInteractive ? null : await pickClient(names)));
+  if (!chosen) {
+    env.err('init · 登记了多个客户端包，需要指定用哪个');
+    console.error('  下一步：加 --use <名字> 重跑（已登记：' + names.join('、') + '）');
+    return 1;
+  }
   const client = resolveClient(store, chosen);
 
   // 联接判定前置：悬挂 junction 让 existsSync 返回 false，必须用 lstat 才不会撞 EEXIST
@@ -208,8 +218,14 @@ export async function cmdInit(args, projectRoot, project, env) {
     return 1;
   }
 
-  const webUrl = existing.webUrl || (await ask('本地前端地址', 'http://localhost:8080/yl-client-web'));
-  const hisUserId = existing.hisUserId || (await ask('hisUserId（可留空）', ''));
+  const webUrl = existing.webUrl || args.webUrl
+    || (nonInteractive ? '' : await ask('本地前端地址', 'http://localhost:8080/yl-client-web'));
+  if (!webUrl) {
+    env.err('init · 缺少本地前端地址');
+    console.error('  下一步：加 --web-url http://localhost:8080/yl-client-web 重跑（非交互环境不支持提问）');
+    return 1;
+  }
+  const hisUserId = existing.hisUserId || args.hisUserId || (nonInteractive ? '' : await ask('hisUserId（可留空）', ''));
 
   // 校验都通过了才写盘，避免失败时留下半套配置
   writeProject(projectRoot, { version: 1, client: chosen, webUrl, hisUserId });
