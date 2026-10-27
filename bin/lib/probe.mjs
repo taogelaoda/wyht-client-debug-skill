@@ -30,26 +30,30 @@ export function parseTasklist(text) {
     .filter((row) => !isNaN(row.pid));
 }
 
+// 命令失败返回 null = "未知"，绝不能假装"没有"：stop 的验收依赖这个区别
 function execText(file, args) {
   return new Promise((resolve) => {
     execFile(file, args, { windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
-      resolve(err ? '' : String(stdout || ''));
+      resolve(err ? null : String(stdout || ''));
     });
   });
 }
 
 export async function listeningPorts() {
-  return parseNetstatListening(await execText('netstat', ['-ano']));
+  const text = await execText('netstat', ['-ano']);
+  return text === null ? null : parseNetstatListening(text);
 }
 
 export async function portListening(port) {
-  return (await listeningPorts()).indexOf(Number(port)) !== -1;
+  const ports = await listeningPorts();
+  return ports === null ? null : ports.indexOf(Number(port)) !== -1;
 }
 
 export async function processesByName(names) {
   const all = [];
   for (const name of names) {
     const text = await execText('tasklist', ['/FI', 'IMAGENAME eq ' + name, '/FO', 'CSV', '/NH']);
+    if (text === null) return null;
     parseTasklist(text).forEach((row) => all.push(row));
   }
   return all;

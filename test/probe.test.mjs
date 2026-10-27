@@ -9,9 +9,10 @@ export default [
       const text = [
         '  TCP    127.0.0.1:9222         0.0.0.0:0              LISTENING       57600',
         '  TCP    127.0.0.1:8080         0.0.0.0:0              LISTENING       1234',
+        '  TCP    [::]:9321              [::]:0                 LISTENING       999',
         '  TCP    127.0.0.1:5000         127.0.0.1:9222         TIME_WAIT       0',
       ].join('\r\n');
-      assert.deepStrictEqual(parseNetstatListening(text).sort(), [8080, 9222]);
+      assert.deepStrictEqual(parseNetstatListening(text).sort((a, b) => a - b), [8080, 9222, 9321]);
     },
   },
   {
