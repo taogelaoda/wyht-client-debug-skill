@@ -13,7 +13,8 @@ export async function listPages() {
   try {
     const res = await fetch(cdpEndpoint('/json/list'), { signal: controller.signal });
     if (!res.ok) return [];
-    return await res.json();
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   } catch (e) {
     return [];
   } finally {
@@ -23,7 +24,7 @@ export async function listPages() {
 
 export function pickPage(pages, prefix) {
   // 排除 devtools：开着调试器时它也是 type=page 且带 ws 地址，退回首选会评估到调试器里
-  const list = (pages || []).filter((p) => p.type === 'page' && p.url && !/^(about|devtools):/.test(p.url));
+  const list = (Array.isArray(pages) ? pages : []).filter((p) => p.type === 'page' && p.url && !/^(about|devtools):/.test(p.url));
   if (!list.length) return null;
   if (prefix) {
     for (const p of list) if (p.url.indexOf(prefix) === 0) return p;
@@ -33,6 +34,9 @@ export function pickPage(pages, prefix) {
 
 export function evaluate(page, expression, options) {
   const opts = options || {};
+  if (!page || !page.webSocketDebuggerUrl) {
+    return Promise.reject(new Error('页面缺少 webSocketDebuggerUrl；下一步：确认 9222 上列出的是业务页，先跑 wyht-skill doctor'));
+  }
   const timeoutMs = opts.timeoutMs || 5000;
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(page.webSocketDebuggerUrl);

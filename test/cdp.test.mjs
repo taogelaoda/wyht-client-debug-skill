@@ -2,6 +2,7 @@ import assert from 'assert';
 import { pickPage, cdpEndpoint } from '../bin/lib/cdp.mjs';
 
 const pages = [
+  { type: 'page', url: 'devtools://devtools/devtools_app.html', id: '0' },
   { type: 'page', url: 'about:blank', id: '1' },
   { type: 'page', url: 'http://172.17.28.67:81/yl-client-web/home', id: '2' },
   { type: 'page', url: 'http://localhost:8080/yl-client-web/login?x=1', id: '3' },
@@ -13,7 +14,7 @@ export default [
     fn: () => { assert.strictEqual(pickPage(pages, 'http://localhost:8080/yl-client-web').id, '3'); },
   },
   {
-    name: 'pickPage 无匹配时退回第一个非 about 页面',
+    name: 'pickPage 无匹配时跳过 devtools 与 about，退回第一个业务页',
     fn: () => { assert.strictEqual(pickPage(pages, 'http://nope/').id, '2'); },
   },
   {
