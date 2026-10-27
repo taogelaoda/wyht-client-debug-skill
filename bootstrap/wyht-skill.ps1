@@ -3,13 +3,13 @@
     wyht 技能引导器：一条命令把技能装到本机（克隆仓库、放好命令入口、加 PATH），然后转交安装器。
 
 .DESCRIPTION
-    首次使用跑一次即可，之后所有逻辑都在仓库的 bin\wyht-skill.ps1 里，靠 git pull 更新。
+    首次使用跑一次即可，之后所有逻辑都在仓库的 bin\wyht-skill.mjs 里，靠 git pull 更新。
 
     做的事：
       1. 仓库不在 %LOCALAPPDATA%\wyht\skills\<技能名> → 克隆（有 git 用 git，没 git 用 GitHub 的 zip 快照）
       2. 在 %LOCALAPPDATA%\wyht\bin 放一个 wyht-skill.cmd 入口（指向仓库里的脚本，不复制副本）
       3. 把该目录追加进 User PATH（只改 User 级、只追加、已含则跳过；-NoPathUpdate 可跳过）
-      4. 转交：& <仓库>\bin\wyht-skill.ps1 <同样的参数>
+      4. 转交：& node <仓库>\bin\wyht-skill.mjs <同样的参数>
 
     既可用文件运行，也可直接管道执行（无参时默认装到当前目录）：
       irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/bootstrap/wyht-skill.ps1 | iex
@@ -37,6 +37,19 @@ $ErrorActionPreference = 'Stop'
 $SkillName = 'wyht-client-debug'
 $RepoDir = Join-Path $env:LOCALAPPDATA "wyht\skills\$SkillName"
 
+# Node 版本闸门放在前面：CLI 要求 >= 24，不满足就别克隆/写入口，避免半个安装
+$nodeVersion = $null
+try { $nodeVersion = (& node -v) 2>$null } catch { $nodeVersion = $null }
+if (-not $nodeVersion) {
+    Write-Error '需要 Node.js（>= 24）才能使用 wyht-skill 命令；请先安装 Node 后重试'
+    exit 1
+}
+$ver = $nodeVersion.TrimStart('v').Split('.')
+if ([int]$ver[0] -lt 24) {
+    Write-Error ("需要 Node >= 24，当前 " + $nodeVersion)
+    exit 1
+}
+
 # 克隆源按顺序尝试：显式 -RepoUrl 只用一个；否则 Gitee 优先（国内网络实测可达），GitHub 兜底。
 $RepoCandidates = @()
 if ($RepoUrl) {
@@ -48,12 +61,12 @@ if ($RepoUrl) {
     )
 }
 $BinDir = Join-Path $env:LOCALAPPDATA 'wyht\bin'
-$Cli = Join-Path $RepoDir 'bin\wyht-skill.ps1'
+$Cli = Join-Path $RepoDir 'bin\wyht-skill.mjs'
 
 # 入口用 .cmd 包一层：cmd.exe 按 OEM 解码，必须纯 ASCII
 $ShimContent = "@echo off`r`n" +
-    "rem wyht-skill entry: delegates to the skill repo, update via wyht-skill install`r`n" +
-    "powershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0..\skills\$SkillName\bin\wyht-skill.ps1`" %*`r`n"
+    "rem wyht-skill entry: forwards args to the Node CLI inside the skill repo`r`n" +
+    "node `"%~dp0..\skills\$SkillName\bin\wyht-skill.mjs`" %*`r`n"
 
 # 用 GitHub 的 zip 快照解一份工作区：给没装 git 的机器留后路
 function Get-RepoSnapshot {
@@ -98,7 +111,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'SKILL.md'))) {
 }
 
 if (-not (Test-Path -LiteralPath $Cli)) {
-    Write-Error "仓库里缺少 bin\wyht-skill.ps1，先 git -C `"$RepoDir`" pull 再试"
+    Write-Error "仓库里缺少 bin\wyht-skill.mjs，先 git -C `"$RepoDir`" pull 再试"
     exit 1
 }
 
@@ -123,14 +136,18 @@ if (-not $NoPathUpdate) {
     }
 }
 
-# 参数按名字转发：splat 字符串数组会被当成位置参数，-Project 之类会丢
-$forward = @{ Command = $Command }
-foreach ($name in 'Project', 'ClientDir', 'Ref') {
-    $value = Get-Variable -Name $name -ValueOnly
-    if ($value) { $forward[$name] = $value }
+# 参数按 CLI 选项名转发：splat 字符串数组会被当成位置参数，-Project 之类会丢
+$forwardArgs = @()
+if ($Command) { $forwardArgs += $Command }
+foreach ($pair in @(
+    @{ Name = 'project';    Value = $Project },
+    @{ Name = 'client-dir'; Value = $ClientDir },
+    @{ Name = 'repo-url';   Value = $RepoUrl },
+    @{ Name = 'ref';        Value = $Ref }
+)) {
+    if ($pair.Value) { $forwardArgs += ('--' + $pair.Name); $forwardArgs += $pair.Value }
 }
-if ($Force) { $forward['Force'] = $true }
-if ($RepoUrl) { $forward['RepoUrl'] = $RepoUrl }
+if ($Force) { $forwardArgs += '--force' }
 
-& $Cli @forward
+& node $Cli @forwardArgs
 exit $LASTEXITCODE
