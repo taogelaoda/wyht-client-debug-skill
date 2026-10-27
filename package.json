@@ -1,0 +1,8 @@
+{
+  "name": "wyht-client-debug-skill",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": { "test": "node test/run.mjs" }
+}
