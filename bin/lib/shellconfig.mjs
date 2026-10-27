@@ -5,7 +5,8 @@ export const KEYS = ['IsFirstRun', 'ServerUrl', 'HospitalId', 'ClientType', 'Hos
 const PRIVATE_SUFFIXES = ['.local', '.lan', '.internal', '.corp'];
 
 export function readShellConfig(dbPath) {
-  const db = new DatabaseSync(dbPath, { readOnly: true });
+  // 与原 python 脚本的 timeout=3 对齐：客户端持独占锁时等待而不是立刻 locked
+  const db = new DatabaseSync(dbPath, { readOnly: true, timeout: 3000 });
   try {
     const rows = db
       .prepare('select key, value from iu_Hrball_exe where key in (' + KEYS.map(() => '?').join(',') + ')')
@@ -26,13 +27,14 @@ function hostOf(serverUrl) {
   }
 }
 
-// 对齐 Python ipaddress.is_private：私网段、回环、链路本地、CGNAT、基准测试段
 function isPrivateHost(host) {
   if (!host) return false;
   if (host === 'localhost') return true;
   if (PRIVATE_SUFFIXES.some((s) => host.endsWith(s))) return true;
   // 不带点的主机名（如 hisserver）视作内网机器名
   if (host.indexOf('.') === -1) return !/^\d+$/.test(host.replace(/-/g, ''));
+  // 注意：这里比 python 的 ipaddress.is_private 多判了 CGNAT（100.64/10），
+  // 文档段（192.0.2/24 等）与保留段未覆盖——是行为选择，不是逐段移植。
   const v4 = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
   if (!v4) return false;
   const a = parseInt(v4[1], 10);
@@ -51,11 +53,13 @@ function isPrivateHost(host) {
 
 export function classify(cfg) {
   const rawFirst = cfg.IsFirstRun;
+  // 缺键与 SQL NULL 同义；值统一 trim+小写后再判（' 1 ' 也算安装态）
   // 宿主读配置的默认值是 true：键缺失同样算安装态，不能当已装
-  const isFirst = rawFirst === undefined ? true : String(rawFirst).trim().toLowerCase() === 'true' || String(rawFirst) === '1';
+  const firstText = rawFirst === undefined || rawFirst === null ? '' : String(rawFirst).trim().toLowerCase();
+  const isFirst = firstText === '' || firstText === 'true' || firstText === '1';
   const serverUrl = String(cfg.ServerUrl || '').trim();
   if (isFirst) {
-    const shown = rawFirst === undefined ? '缺失（按 true 处理）' : rawFirst;
+    const shown = rawFirst === undefined || rawFirst === null ? '缺失（按 true 处理）' : rawFirst;
     return { env: 'install', reason: 'IsFirstRun=' + shown + ' → 安装态：宿主强制加载 file:///html/InitForm.html，--url 被忽略' };
   }
   if (!serverUrl) {

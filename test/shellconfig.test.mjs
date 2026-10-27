@@ -36,6 +36,9 @@ export default [
     name: 'IsFirstRun 缺失按安装态处理',
     fn: () => {
       assert.strictEqual(classify({ ServerUrl: 'http://x' }).env, 'install');
+      // 值两侧有空白、SQL NULL 都算安装态，与 python 一致
+      assert.strictEqual(classify({ IsFirstRun: ' 1 ' }).env, 'install');
+      assert.strictEqual(classify({ IsFirstRun: null, ServerUrl: 'http://x' }).env, 'install');
     },
   },
   {
@@ -48,6 +51,10 @@ export default [
     name: '内网地址 → frontend',
     fn: () => {
       assert.strictEqual(classify({ IsFirstRun: 'false', ServerUrl: 'http://172.17.28.67:81/iuPublicClientServer' }).env, 'frontend');
+      // 回环 / 单段机器名 / 内网后缀 / CGNAT
+      ['http://127.0.0.1:8080/', 'http://hisserver/', 'http://his.lan/', 'http://100.64.0.1/'].forEach((url) => {
+        assert.strictEqual(classify({ IsFirstRun: 'false', ServerUrl: url }).env, 'frontend', url);
+      });
     },
   },
   {
