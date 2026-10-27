@@ -23,22 +23,38 @@
 | `SKILL.md` | 技能入口：触发条件、环境自检、快速参考、无 DevTools 时的日志通道、常见错误、红线 |
 | `cdp-recipes.md` | 按需加载的 CDP 配方：抓 POST 报文、临时导航并还原、退出客户端、PowerShell 发 CDP |
 | `scripts/check_env.py` | 只读环境自检，退出码 `0=直连 2=安装态 3=前置机 4=读取失败` |
+| `install.ps1` | 一键安装到项目：克隆（按需）+ 建目录联接，幂等、拒绝破坏实体目录 |
 
 ## 安装到项目
 
-技能仓库与使用它的项目解耦：项目里只放一个目录联接（junction），不复制文件。
+技能仓库与使用它的项目解耦：项目里只放一个目录联接（junction），不复制文件。`install.ps1` 就是把这件事做成一条命令（Windows，不需要管理员）。
 
 ```powershell
-# 1. 克隆本仓库（任意位置，建议与项目同级）
-git clone http://192.168.1.66:9999/zhugangtao/wyht-client-debug-skill.git D:\Document\wyht-client-debug-skill
+# 仓库已克隆：直接从仓库里跑（-Project 不写则是当前目录）
+D:\Document\wyht-client-debug-skill\install.ps1 -Project "<项目根目录>"
 
-# 2. 在项目里建联接（项目未跟踪 .claude/ 时不需要改 .gitignore）
-cmd /c mklink /J "<项目>\.claude\skills\wyht-client-debug" "D:\Document\wyht-client-debug-skill"
+# 从零开始：本机还没有克隆时，指定目标路径让它自己 clone
+.\install.ps1 -Project "<项目根目录>" -RepoDir D:\Document\wyht-client-debug-skill
 ```
 
-- 已存在实体目录时先删掉它，再建联接；**不要**反过来把联接的内容复制进项目，否则又变成两份。
-- `git pull` 后技能立即生效，无需重建联接。
-- 换机器或换克隆路径时，删掉旧联接重建一次即可。
+脚本幂等，按目标现状分流：
+
+| 目标现状 | 行为 |
+|---|---|
+| 不存在 | 建联接，打印技能版本与下一步命令 |
+| 已是指向本仓库的联接 | 报告后跳过（退出码 0），可当"检查是否装好"用 |
+| 指向别处的联接 / 实体目录 | **拒绝**并说明原因；确认要替换加 `-Force`（实体目录会先备份成 `*.bak-<时间戳>`） |
+| `-RepoDir` 不存在 | `git clone` 后继续装（约 2 秒） |
+
+- 判定失败（拒绝替换）退出码为 1，可直接用在脚本里。
+- `git pull` 后技能立即生效，无需重建联接；换机器或换克隆路径时重跑一次即可。
+- **`install.ps1` 必须带 UTF-8 BOM 保存**：PowerShell 5.1 会把无 BOM 的脚本按本地 ANSI 解码，中文注释会直接导致语法错误。
+- 非 Windows（或不想用脚本）时手工等价操作：
+  ```bash
+  git clone http://192.168.1.66:9999/zhugangtao/wyht-client-debug-skill.git <克隆目录>
+  cmd /c mklink /J "<项目>\.claude\skills\wyht-client-debug" "<克隆目录>"   # Linux/macOS: ln -s
+  ```
+- **不要**把联接的内容复制进项目，否则又变成两份、`git pull` 也不再影响项目里那份。
 
 ## 与项目的契约
 
