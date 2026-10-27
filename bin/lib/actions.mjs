@@ -7,6 +7,11 @@ export function buildStartUrl(options) {
   return webUrl + '/login' + (query.length ? '?' + query.join('&') : '');
 }
 
+// pickPage 在没有前缀匹配时会退回 list[0]（可能是安装态 file:// 页或远程页），所以命中后必须再核一次
+export function matchLocalPage(page, webUrl) {
+  return !!(page && webUrl && page.url && page.url.indexOf(webUrl) === 0);
+}
+
 export function startPreflight(input) {
   if (input.port9222) {
     const pages = (input.pages || []).filter((p) => p.type === 'page' && p.url && p.url.indexOf('about:') !== 0);
@@ -58,8 +63,11 @@ export function buildDoctorReport(input) {
     (input.behind === null ? '（远端不可达）' : '（落后 ' + input.behind + ' 个提交）'));
   const ports = input.ports || {};
   lines.push('  端口     9222 ' + mark(ports[9222]) + '、8080 ' + mark(ports[8080]) + '、9321 ' + mark(ports[9321]));
+  const procsUnknown = input.processes === null;
   const procs = input.processes || [];
-  lines.push('  壳进程   ' + (procs.length ? procs.map((p) => p.name + '(' + p.pid + ')').join('、') : '未运行'));
+  lines.push('  壳进程   ' + (procsUnknown
+    ? '未知（tasklist 无返回）'
+    : procs.length ? procs.map((p) => p.name + '(' + p.pid + ')').join('、') : '未运行'));
   lines.push('  本地前端 HTTP ' + (input.webStatus || 0) + ' ' + mark(input.webStatus >= 200 && input.webStatus < 400));
   const pages = (input.pages || []).filter((p) => p.type === 'page' && p.url && p.url.indexOf('about:') !== 0);
   if (pages.length) {

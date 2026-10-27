@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const KNOWN_EXES = ['czht.exe', 'iu.Hrball.exe'];
+export const KNOWN_EXES = ['czht.exe', 'iu.Hrball.exe'];
 
 // 目录名形如 WYHT--3.1.1--x64--20261021_102251--医保凭证：取首个 x.y.z 与尾段作为名字
 export function deriveClient(dir) {
