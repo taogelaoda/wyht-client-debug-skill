@@ -62,7 +62,9 @@ export function buildDoctorReport(input) {
   lines.push('  技能仓库 ' + (input.repoVersion || '未知') +
     (input.behind === null ? '（远端不可达）' : '（落后 ' + input.behind + ' 个提交）'));
   const ports = input.ports || {};
-  lines.push('  端口     9222 ' + mark(ports[9222]) + '、8080 ' + mark(ports[8080]) + '、9321 ' + mark(ports[9321]));
+  lines.push('  端口     ' + (input.ports === null
+    ? '未知（netstat 没有返回）'
+    : '9222 ' + mark(ports[9222]) + '、8080 ' + mark(ports[8080]) + '、9321 ' + mark(ports[9321])));
   const procsUnknown = input.processes === null;
   const procs = input.processes || [];
   lines.push('  壳进程   ' + (procsUnknown
@@ -72,8 +74,11 @@ export function buildDoctorReport(input) {
   const pages = (input.pages || []).filter((p) => p.type === 'page' && p.url && p.url.indexOf('about:') !== 0);
   if (pages.length) {
     lines.push('  页面     ' + pages.map((p) => p.url).join('\n           '));
-    if (input.webUrl && !pages.some((p) => p.url.indexOf(input.webUrl) === 0) && procs.length) {
+    const notLocal = !!input.webUrl && !pages.some((p) => p.url.indexOf(input.webUrl) === 0);
+    if (notLocal && procs.length) {
       lines.push('  ⚠ 当前 9222 上的页面不是本地前端：先 wyht-skill stop，再 wyht-skill start');
+    } else if (notLocal && procsUnknown) {
+      lines.push('  ⚠ 当前 9222 上的页面不是本地前端；壳进程未知，无法判断页面归属');
     }
   } else if (ports[9222]) {
     lines.push('  ⚠ 9222 在监听但列不到业务页面（可能只有 about:blank）');

@@ -278,9 +278,13 @@ export async function cmdCheck(args, client, env) {
 }
 
 export async function cmdDoctor(args, project, client, env) {
-  const ports = resolvePorts((await listeningPorts()) || []);
-  const rawProcs = await processesByName(KNOWN_EXES);
-  const procs = rawProcs === null ? null : resolveProcesses(rawProcs, KNOWN_EXES);
+  // netstat 失败传 null，让报告打印"未知"，而不是渲染成三个"未监听"
+  const rawPorts = await listeningPorts();
+  const ports = rawPorts === null ? null : resolvePorts(rawPorts);
+  // 自动探测只认常见壳名，--exe 登记的自定义程序要补进名单
+  const exeNames = KNOWN_EXES.indexOf(client.exe) === -1 ? KNOWN_EXES.concat(client.exe) : KNOWN_EXES;
+  const rawProcs = await processesByName(exeNames);
+  const procs = rawProcs === null ? null : resolveProcesses(rawProcs, exeNames);
   const webStatus = await httpStatus(project.webUrl + '/');
   const pages = await listPages();
   const delta = await remoteBehind(env.repoDir);
@@ -330,8 +334,12 @@ export async function cmdStart(args, project, client, env) {
   child.on('error', (err) => console.error('警告：启动失败 ' + (err && err.message ? err.message : err)));
   child.unref();
   const timeoutMs = (args.timeout || 30) * 1000;
-  const hit = await waitForPage((list) => pickPage(list, project.webUrl), { timeoutMs });
-  // pickPage 兜底可能选到非本地页面（安装态 file://、远程页），必须再核一次
+  // pickPage 兜底会退回 list[0]（过渡页、安装态 file://），必须把本地判定内联进谓词，
+  // 否则第一个非 about 页面就会让等待提前结束、然后被误当成失败
+  const hit = await waitForPage((list) => {
+    const candidate = pickPage(list, project.webUrl);
+    return matchLocalPage(candidate, project.webUrl) ? candidate : null;
+  }, { timeoutMs });
   if (!matchLocalPage(hit, project.webUrl)) {
     // 这是我们自己拉起的进程：失败要留痕并回收，否则 9222 被它占住，下一次 start 必然 3
     const stateFileEarly = path.join(path.dirname(clientsFilePath()), 'state.json');
@@ -339,7 +347,7 @@ export async function cmdStart(args, project, client, env) {
     fs.writeFileSync(stateFileEarly, JSON.stringify({ lastPid: child.pid, webUrl: project.webUrl, at: Date.now(), startFailed: true }, null, 2), 'utf8');
     try { child.kill(); } catch (e) { /* 忽略 */ }
     env.out('start · 失败', [
-      hit ? '  等到的页面不是本地前端：' + hit.url : '  ' + Math.round(timeoutMs / 1000) + 's 内没等到任何业务页面',
+      '  ' + Math.round(timeoutMs / 1000) + 's 内没等到加载本地前端的页面（' + project.webUrl + '）',
       '  PID ' + child.pid + '（已尝试结束；若仍占着 9222 用 wyht-skill stop）',
       '  日志目录 ' + path.join(client.dir, 'logs'),
       '  下一步：wyht-skill doctor 看端口与进程；确认 dev server 与客户端都没被占用',

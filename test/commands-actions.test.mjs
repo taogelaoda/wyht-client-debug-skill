@@ -1,7 +1,7 @@
 // test/commands-actions.test.mjs —— actions 接线的纯函数判定
 import assert from 'assert';
 import { resolvePorts, resolveProcesses } from '../bin/lib/commands.mjs';
-import { matchLocalPage, stopVerdict } from '../bin/lib/actions.mjs';
+import { matchLocalPage, startPreflight, stopVerdict, buildDoctorReport } from '../bin/lib/actions.mjs';
 
 export default [
   {
@@ -14,6 +14,14 @@ export default [
       assert.strictEqual(matchLocalPage({ url: 'file:///html/InitForm.html' }, webUrl), false);
       assert.strictEqual(matchLocalPage({ url: 'http://10.0.0.5/yl-client-web/' }, webUrl), false);
       assert.strictEqual(matchLocalPage(null, webUrl), false);
+      // dev server 根路径常 302：2xx/3xx 都算存活
+      assert.strictEqual(startPreflight({ port9222: false, webStatus: 302, pages: [] }).exitCode, 0);
+      assert.strictEqual(startPreflight({ port9222: false, webStatus: 0, pages: [] }).exitCode, 3);
+      assert.strictEqual(startPreflight({ port9222: true, webStatus: 200, pages: [] }).exitCode, 3);
+      // 探测失败要渲染成"未知"，不能变成三个 ❌ 或"未运行"
+      const unknown = buildDoctorReport({ ports: null, processes: null, behind: null, pages: [], webStatus: 0 });
+      assert.ok(unknown.some((l) => l.indexOf('端口') !== -1 && l.indexOf('未知') !== -1));
+      assert.ok(unknown.some((l) => l.indexOf('壳进程') !== -1 && l.indexOf('未知') !== -1));
     },
   },
   {
