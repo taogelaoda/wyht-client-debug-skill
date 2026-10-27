@@ -47,6 +47,8 @@ GitHub 作为备选（网络允许时可用）：
 irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/get.ps1 | iex
 ```
 
+克隆源按 **Gitee → GitHub** 顺序自动尝试：Gitee 拉不动就换 GitHub，`-RepoUrl` 可只指定一个源（内网用户指内网 GitLab）。
+
 两个入口的分工：`get.ps1` 是 `irm|iex` 专用（纯 ASCII、无 BOM，因为管道执行时 BOM 会粘到第一个 token 上导致解析失败），它把带 BOM 的 bootstrap 落到 `%TEMP%` 再执行；带参数时用 `-OutFile` 两步写法。
 
 > 实测注意：GitHub raw 有 CDN 缓存，刚 push 完可能仍在发上一版（实测 10 分钟未刷新，加 `?x=1` 也不生效）；Gitee raw 会 302 到 `raw.giteeusercontent.com`，`irm` 会自动跟随。改 `get.ps1` 本身后要等缓存过期才对外生效。

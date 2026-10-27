@@ -29,13 +29,24 @@ param(
     [string]$ClientDir,
     [string]$Ref,
     [switch]$Force,
-    [string]$RepoUrl = 'https://github.com/taogelaoda/wyht-client-debug-skill.git',
+    [string]$RepoUrl,
     [switch]$NoPathUpdate
 )
 
 $ErrorActionPreference = 'Stop'
 $SkillName = 'wyht-client-debug'
 $RepoDir = Join-Path $env:LOCALAPPDATA "wyht\skills\$SkillName"
+
+# 克隆源按顺序尝试：显式 -RepoUrl 只用一个；否则 Gitee 优先（国内网络实测可达），GitHub 兜底。
+$RepoCandidates = @()
+if ($RepoUrl) {
+    $RepoCandidates = @($RepoUrl)
+} else {
+    $RepoCandidates = @(
+        'https://gitee.com/zhu-gangtao/wyht-client-debug-skill.git',
+        'https://github.com/taogelaoda/wyht-client-debug-skill.git'
+    )
+}
 $BinDir = Join-Path $env:LOCALAPPDATA 'wyht\bin'
 $Cli = Join-Path $RepoDir 'bin\wyht-skill.ps1'
 
@@ -46,8 +57,9 @@ $ShimContent = "@echo off`r`n" +
 
 # 用 GitHub 的 zip 快照解一份工作区：给没装 git 的机器留后路
 function Get-RepoSnapshot {
-    if ($RepoUrl -notmatch 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/]+?)(\.git)?$') {
-        throw "没有 git，且 -RepoUrl 不是 GitHub 地址，无法下载快照"
+    $gh = $RepoCandidates | Where-Object { $_ -match 'github\.com' } | Select-Object -First 1
+    if (-not $gh -or $gh -notmatch 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/]+?)(\.git)?$') {
+        throw "没有 git，且没有可用的 GitHub 地址，无法下载快照"
     }
     $zip = Join-Path $env:TEMP "wyht-$SkillName.zip"
     $stage = Join-Path $env:TEMP "wyht-$SkillName-snapshot"
@@ -64,10 +76,20 @@ function Get-RepoSnapshot {
 if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'SKILL.md'))) {
     New-Item -ItemType Directory -Path (Split-Path -Parent $RepoDir) -Force | Out-Null
     if (Get-Command git -ErrorAction SilentlyContinue) {
-        Write-Host "首次使用：克隆 $RepoUrl"
-        & git clone --quiet $RepoUrl $RepoDir
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "git clone 失败（退出码 $LASTEXITCODE）"
+        $cloned = $false
+        foreach ($candidate in $RepoCandidates) {
+            Write-Host "首次使用：克隆 $candidate"
+            & git clone --quiet $candidate $RepoDir
+            if ($LASTEXITCODE -eq 0) {
+                $RepoUrl = $candidate
+                $cloned = $true
+                break
+            }
+            Write-Warning "该源不可用，换下一个"
+            Remove-Item -LiteralPath $RepoDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if (-not $cloned) {
+            Write-Error "所有克隆源都失败：$($RepoCandidates -join ' / ')"
             exit 1
         }
     } else {

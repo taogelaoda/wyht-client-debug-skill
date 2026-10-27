@@ -22,7 +22,7 @@
     install 时切到的分支或 tag，默认 main。
 
 .PARAMETER RepoUrl
-    仓库地址，默认 GitHub 公共仓；内网用户改成内网 GitLab 地址。
+    仓库地址，默认 Gitee 公共仓（国内可达）；内网用户改成内网 GitLab 地址，GitHub 用户改成 GitHub 地址。
 
 .PARAMETER Force
     目标已是指向别处的联接、或占了实体目录时必须显式传，实体目录会先备份成 *.bak-<时间戳>。
@@ -40,7 +40,7 @@ param(
     [string]$ClientDir,
     [string]$Ref = 'main',
     [switch]$Force,
-    [string]$RepoUrl = 'https://github.com/taogelaoda/wyht-client-debug-skill.git'
+    [string]$RepoUrl = 'https://gitee.com/zhu-gangtao/wyht-client-debug-skill.git'
 )
 
 $ErrorActionPreference = 'Stop'

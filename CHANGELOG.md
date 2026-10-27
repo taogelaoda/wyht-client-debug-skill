@@ -1,5 +1,11 @@
 # 变更记录
 
+## 2.6.4
+
+- 克隆源改为 **Gitee 优先、GitHub 兜底**（此前 Gitee 入口下载到的脚本仍去 GitHub 拉仓库，GitHub 不通的网络会卡在克隆这一步）
+- `-RepoUrl` 设为只用一个源；不传时按候选列表逐个尝试，全失败才报错
+- 无 git 的 zip 快照路径改为从候选里的 GitHub 地址推算
+
 ## 2.6.3
 
 - Gitee 镜像已建立并公开：`https://gitee.com/zhu-gangtao/wyht-client-debug-skill`，README 一键命令改为 Gitee 优先、GitHub 备选
