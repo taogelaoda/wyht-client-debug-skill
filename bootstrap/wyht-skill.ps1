@@ -11,11 +11,15 @@
       3. 把该目录追加进 User PATH（只改 User 级、只追加、已含则跳过；-NoPathUpdate 可跳过）
       4. 转交：& node <仓库>\bin\wyht-skill.mjs <同样的参数>
 
-    既可用文件运行，也可直接管道执行（无参时默认装到当前目录）：
+    既可用文件运行，也可直接管道执行（无参 = 机器级 install）：
       irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/bootstrap/wyht-skill.ps1 | iex
 
 .EXAMPLE
-    wyht-skill install -Project 'D:\Document\outprovince-doctor-client-省外标准版'
+    wyht-skill install
+
+.EXAMPLE
+    # 项目级配置在项目根运行（参数原样转交 Node CLI）
+    wyht-skill init
 
 .EXAMPLE
     # 内网用户改用内网 GitLab 源
@@ -30,7 +34,9 @@ param(
     [string]$Ref,
     [switch]$Force,
     [string]$RepoUrl,
-    [switch]$NoPathUpdate
+    [switch]$NoPathUpdate,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Rest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,13 +45,24 @@ $RepoDir = Join-Path $env:LOCALAPPDATA "wyht\skills\$SkillName"
 
 # Node 版本闸门放在前面：CLI 要求 >= 24，不满足就别克隆/写入口，避免半个安装
 $nodeVersion = $null
-try { $nodeVersion = (& node -v) 2>$null } catch { $nodeVersion = $null }
-if (-not $nodeVersion) {
+if (Get-Command node -ErrorAction SilentlyContinue) {
+    # 外层 EAP=Stop 会把 node 写到 stderr 的告警当成终止错误（2>$null 挡不住），探测期间放宽
+    $eap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $nodeVersion = [string](& node -v 2>$null) } catch { $nodeVersion = $null }
+    $ErrorActionPreference = $eap
+}
+$major = $null
+if ($nodeVersion) {
+    $parsed = 0
+    [void][int]::TryParse(($nodeVersion.TrimStart('v').Split('.')[0]), [ref]$parsed)
+    $major = $parsed
+}
+if ($null -eq $major) {
     Write-Error '需要 Node.js（>= 24）才能使用 wyht-skill 命令；请先安装 Node 后重试'
     exit 1
 }
-$ver = $nodeVersion.TrimStart('v').Split('.')
-if ([int]$ver[0] -lt 24) {
+if ($major -lt 24) {
     Write-Error ("需要 Node >= 24，当前 " + $nodeVersion)
     exit 1
 }
@@ -148,6 +165,9 @@ foreach ($pair in @(
     if ($pair.Value) { $forwardArgs += ('--' + $pair.Name); $forwardArgs += $pair.Value }
 }
 if ($Force) { $forwardArgs += '--force' }
+if ($Rest) { $forwardArgs += $Rest }
 
+# CLI 的失败提示都走 stderr：EAP=Stop 会把它变成终止错误，吞掉真实退出码
+$ErrorActionPreference = 'Continue'
 & node $Cli @forwardArgs
 exit $LASTEXITCODE
