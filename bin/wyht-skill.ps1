@@ -21,6 +21,9 @@
 .PARAMETER Ref
     install 时切到的分支或 tag，默认 main。
 
+.PARAMETER RepoUrl
+    仓库地址，默认 GitHub 公共仓；内网用户改成内网 GitLab 地址。
+
 .PARAMETER Force
     目标已是指向别处的联接、或占了实体目录时必须显式传，实体目录会先备份成 *.bak-<时间戳>。
 
@@ -36,12 +39,12 @@ param(
     [string]$Project = (Get-Location).Path,
     [string]$ClientDir,
     [string]$Ref = 'main',
-    [switch]$Force
+    [switch]$Force,
+    [string]$RepoUrl = 'https://github.com/taogelaoda/wyht-client-debug-skill.git'
 )
 
 $ErrorActionPreference = 'Stop'
 $SkillName = 'wyht-client-debug'
-$RepoUrl = 'http://192.168.1.66:9999/zhugangtao/wyht-client-debug-skill.git'
 
 # 仓库根由脚本位置推出：<仓库>\bin\wyht-skill.ps1。不能写在 param 默认值里——
 # -File 方式启动时，param 默认值阶段 $PSScriptRoot 还是空的。

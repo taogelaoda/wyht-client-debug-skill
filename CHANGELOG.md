@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2.6.0
+
+- 默认源改为 GitHub 公共仓 `taogelaoda/wyht-client-debug-skill`；新增 `-RepoUrl` 让内网用户指回内网 GitLab（内网地址从脚本默认值里移除，只留在文档示例）
+- 支持 `irm <raw> | iex` 一键下载：bootstrap 可在无 `$PSScriptRoot` 的管道执行下工作
+- 机器没装 git 时改用 GitHub zip 快照解一份工作区
+- 命令入口 `.cmd` 改为转发到仓库脚本，不再把 `.ps1` 复制进 `%LOCALAPPDATA%\wyht\bin`
+- README 重写为「一键下载 / 内网用户 / 落地位置 / 行为边界 / 编码约束」五节
+
 ## 2.5.0
 
 - 新增 `wyht-skill` 命令：`install`（克隆/刷新仓库 → 建或改指联接 → 可选跑 `check_env.py`）与 `status`（版本、dirty、落后远端几个提交、当前项目指向哪）

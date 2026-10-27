@@ -25,50 +25,70 @@
 | `scripts/check_env.py` | 只读环境自检，退出码 `0=直连 2=安装态 3=前置机 4=读取失败` |
 | `bin/wyht-skill.ps1` | 命令本体：`install` / `status` |
 | `bin/wyht-skill.cmd` | 命令入口（cmd 包装，绕过执行策略） |
-| `bootstrap/` | 发给同事的那一对引导文件，复制到 `%LOCALAPPDATA%\wyht\bin` 后由它接管 |
+| `bootstrap/` | 首次使用的一对引导文件（也可直接 `irm … | iex` 执行），之后 `wyht-skill` 命令指向仓库脚本 |
 
-## 安装（一次性引导，之后一条命令）
-
-技能仓库与使用它的项目解耦：仓库固定落在 `%LOCALAPPDATA%\wyht\skills\wyht-client-debug`，项目里只放一个目录联接（junction），不复制文件。
+## 一键下载（外网，无需预先克隆）
 
 ```powershell
-# 一次性：把 bootstrap\ 这一对（wyht-skill.cmd + wyht-skill.ps1）复制到 %LOCALAPPDATA%\wyht\bin
-# 首次运行它会：克隆仓库 → 把该目录追加进 User PATH → 转交仓库里的安装器
+# 零参：装到当前目录。会克隆仓库到 %LOCALAPPDATA%\wyht\skills\wyht-client-debug、
+# 放好 wyht-skill 命令入口、把入口目录加进 User PATH
+irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/bootstrap/wyht-skill.ps1 | iex
 
-# 之后在任意目录：
-wyht-skill install                        # 装到当前项目
-wyht-skill install -Project "<项目根>" -ClientDir "<客户端目录>"   # 顺带跑环境自检
-wyht-skill status                         # 版本 / 是否 dirty / 落后远端几个提交 / 当前项目指向哪
+# 带参：先落盘再执行（iex 传不了参数，所以拆两步）
+irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/bootstrap/wyht-skill.ps1 -OutFile $env:TEMP\wyht.ps1
+& $env:TEMP\wyht.ps1 install -Project "<项目根>" -ClientDir "<客户端目录>"
 ```
 
-`install` 参数：`-Project`（默认当前目录）、`-ClientDir`（传了就执行 `check_env.py` 并打印摘要）、`-Ref`（默认 `main`，可切 tag/分支）、`-Force`。
+装完之后在任何目录都是这条：
 
-行为的边界（都实测过）：
+```powershell
+wyht-skill install              # 装到当前项目（幂等，重跑即升级）
+wyht-skill status               # 版本 / 是否 dirty / 落后远端几个提交 / 当前项目指向哪
+```
+
+`install` 参数：`-Project`（默认当前目录）、`-ClientDir`（传了就执行 `check_env.py` 并打印摘要）、`-Ref`（默认 `main`，可切 tag/分支）、`-Force`、`-RepoUrl`（换源）。
+
+### 内网用户
+
+默认源是 GitHub 公共仓；内网想走内网 GitLab，加一个参数即可（地址只出现在这里，不再是脚本默认值）：
+
+```powershell
+& $env:TEMP\wyht.ps1 install -RepoUrl 'http://192.168.1.66:9999/zhugangtao/wyht-client-debug-skill.git'
+```
+
+### 落地位置
+
+| 东西 | 位置 |
+|---|---|
+| 技能仓库 | `%LOCALAPPDATA%\wyht\skills\wyht-client-debug`（`git pull` 即可升级） |
+| 命令入口 | `%LOCALAPPDATA%\wyht\bin\wyht-skill.cmd`（只转发到仓库里的脚本，不复制副本） |
+| PATH | 只改 User 级、只追加；`-NoPathUpdate` 可跳过 |
+| 项目里 | 只有 `.claude\skills\wyht-client-debug` 一个目录联接（junction），不复制文件 |
+
+### 行为边界（都实测过）
 
 | 场景 | 行为 |
 |---|---|
 | 目标不存在 | 建联接；打印版本、提交号、升级结果 |
 | 已指向同一个仓库 | 保持原联接不动（幂等） |
-| 指向**同源**旧联接（本仓库的旧位置） | 自动改指到 `%LOCALAPPDATA%`，并打印迁移行 |
+| 指向**同源**旧联接 | 自动改指到 `%LOCALAPPDATA%`，打印迁移行 |
 | 指向**异源**联接 / 占着实体目录 | **拒绝**；加 `-Force` 才动，实体目录先备份成 `*.bak-<时间戳>` |
 | 仓库有未提交改动 | 警告后继续；`pull --ff-only` 失败只标记"升级跳过"，安装照常完成 |
 | 内网不通 | 升级跳过，安装照常完成 |
+| 机器没装 git | 用 GitHub 的 zip 快照解一份工作区（只支持 GitHub 源，且后续升级需装 git） |
 
-退出码：成功 0，任何拒绝或异常 1，可直接用在脚本里。
+退出码：成功 0，任何拒绝或异常 1。
 
-注意：
+### 编码约束（踩过才写的）
 
-- **PATH 只改 User 级、只追加**，已含则跳过；新开终端才生效。
 - 所有 `.ps1` 必须带 **UTF-8 BOM**：PowerShell 5.1 会把无 BOM 脚本按本地 ANSI 解码，中文注释直接导致语法错误。
-- 所有 `.cmd` 必须**纯 ASCII**：cmd.exe 按 OEM 代码页解码，UTF-8 中文注释会变成乱码甚至被当成命令执行（实测会报“不是内部或外部命令”）。
+- 所有 `.cmd` 必须**纯 ASCII**：cmd.exe 按 OEM 代码页解码，UTF-8 中文注释会变成乱码甚至被当成命令执行。
 - 原生 `git` 的 stderr 不能并进错误流（`2>&1`），否则 `ErrorActionPreference=Stop` 下会被当成终止错误。
-- 只支持 Windows：junction 是 Windows 概念。非 Windows 手工等价操作：
-  ```bash
-  git clone http://192.168.1.66:9999/zhugangtao/wyht-client-debug-skill.git <克隆目录>
-  ln -s "<克隆目录>" "<项目>/.claude/skills/wyht-client-debug"
-  ```
-- **不要**把联接的内容复制进项目，否则又变成两份、`git pull` 也不再影响项目里那份。
-- 私有库的 raw 地址匿名访问会返回登录页，因此**不存在** `irm … | iex` 这种远程一键；首次拿仓库一定要过一次凭据（Windows 凭据管理器保存后不再问）。
+
+### 其它
+
+- 只支持 Windows：junction 是 Windows 概念。
+- **不要**把联接的内容复制进项目，否则又变成两份、升级也不再影响项目里那份。
 
 ## 与项目的契约
 
