@@ -1,5 +1,11 @@
 # 变更记录
 
+## 2.6.1
+
+- 新增 `get.ps1` 作为 `irm|iex` 专用入口：纯 ASCII、无 BOM。实测带 BOM 的脚本被管道执行时，BOM 会粘到第一个 token 上，报 `意外的属性 CmdletBinding`
+- `get.ps1` 下载 bootstrap 后先去掉行首 BOM 再落盘：下载内容自带 BOM，用带 BOM 的编码写会变成**双 BOM**，同样解析失败
+- README 说明两个入口的分工，并记 GitHub raw 缓存导致新 push 不立刻生效（实测 10 分钟未刷新）
+
 ## 2.6.0
 
 - 默认源改为 GitHub 公共仓 `taogelaoda/wyht-client-debug-skill`；新增 `-RepoUrl` 让内网用户指回内网 GitLab（内网地址从脚本默认值里移除，只留在文档示例）

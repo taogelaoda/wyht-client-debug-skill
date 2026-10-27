@@ -32,12 +32,16 @@
 ```powershell
 # 零参：装到当前目录。会克隆仓库到 %LOCALAPPDATA%\wyht\skills\wyht-client-debug、
 # 放好 wyht-skill 命令入口、把入口目录加进 User PATH
-irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/bootstrap/wyht-skill.ps1 | iex
+irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/get.ps1 | iex
 
 # 带参：先落盘再执行（iex 传不了参数，所以拆两步）
 irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/bootstrap/wyht-skill.ps1 -OutFile $env:TEMP\wyht.ps1
 & $env:TEMP\wyht.ps1 install -Project "<项目根>" -ClientDir "<客户端目录>"
 ```
+
+两个入口的分工：`get.ps1` 是 `irm|iex` 专用（纯 ASCII、无 BOM，因为管道执行时 BOM 会粘到第一个 token 上导致解析失败），它把带 BOM 的 bootstrap 落到 `%TEMP%` 再执行；带参数时用上面的 `-OutFile` 两步写法。
+
+> 实测注意：GitHub raw 有 CDN 缓存，刚 push 完可能仍在发上一版（本次实测 10 分钟未刷新，加 `?x=1` 也不生效）。这不影响使用——`get.ps1` 只负责下载 bootstrap——但**改 `get.ps1` 本身后要等缓存过期才对外生效**。
 
 装完之后在任何目录都是这条：
 
