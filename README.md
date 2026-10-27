@@ -60,6 +60,7 @@ wyht-skill status                         # 版本 / 是否 dirty / 落后远端
 
 - **PATH 只改 User 级、只追加**，已含则跳过；新开终端才生效。
 - 所有 `.ps1` 必须带 **UTF-8 BOM**：PowerShell 5.1 会把无 BOM 脚本按本地 ANSI 解码，中文注释直接导致语法错误。
+- 所有 `.cmd` 必须**纯 ASCII**：cmd.exe 按 OEM 代码页解码，UTF-8 中文注释会变成乱码甚至被当成命令执行（实测会报“不是内部或外部命令”）。
 - 原生 `git` 的 stderr 不能并进错误流（`2>&1`），否则 `ErrorActionPreference=Stop` 下会被当成终止错误。
 - 只支持 Windows：junction 是 Windows 概念。非 Windows 手工等价操作：
   ```bash

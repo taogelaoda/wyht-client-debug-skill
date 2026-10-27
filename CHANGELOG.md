@@ -7,7 +7,8 @@
 - 新增 `bootstrap/` 引导器：发给同事一次，负责首次克隆与追加 User PATH，之后转交仓库内脚本，逻辑更新靠 `git pull`
 - **删除 `install.ps1`**，单一入口收敛到 `wyht-skill`
 - 修 README 的自相矛盾：此前"从零开始 `-RepoDir` 自动克隆"实际不可达（脚本得先存在），且私有库 raw 匿名不可读，`irm|iex` 不成立
-- 记两个 PowerShell 5.1 实测坑：`.ps1` 必须带 UTF-8 BOM；原生 `git` 的 stderr 用 `2>&1` 会被当作终止错误
+- 记三个实测坑：`.ps1` 必须带 UTF-8 BOM（否则中文注释致死语法错误）；`.cmd` 必须纯 ASCII（cmd.exe 按 OEM 解码，UTF-8 注释会被当命令执行）；原生 `git` 的 stderr 用 `2>&1` 会被当作终止错误
+- bootstrap 参数改为按名转发（splat 字符串数组会把 `-Project` 当位置参数丢掉）
 
 ## 2.4.0
 
