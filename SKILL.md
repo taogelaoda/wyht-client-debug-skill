@@ -1,7 +1,7 @@
 ---
 name: wyht-client-debug
 description: 当需要在真实 CEF 医生客户端里验证前端改动、抓取请求报文、或重启客户端加载本地代码时使用；按版本分流（≥3.0 为 C++ 壳、<3.0 为 C# 壳，冷/热启动只有 ≥3.1.0 才有），也适用于宿主内页打不开 DevTools 需要走日志采集、9222 端口只见 about:blank、热启动改不动页面、以及准备改 config.db / hosts / 杀进程绕过客户端限制的场景。
-version: "2.6.1"
+version: "2.6.2"
 license: MIT
 metadata:
   hermes:

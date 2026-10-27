@@ -52,6 +52,31 @@ wyht-skill status               # 版本 / 是否 dirty / 落后远端几个提�
 
 `install` 参数：`-Project`（默认当前目录）、`-ClientDir`（传了就执行 `check_env.py` 并打印摘要）、`-Ref`（默认 `main`，可切 tag/分支）、`-Force`、`-RepoUrl`（换源）。
 
+### 网络可达性（本机实测）
+
+| 目标 | 结果 |
+|---|---|
+| `gitee.com` | ✅ 200，约 5s |
+| `objects.githubusercontent.com`（zip 下载用） | ✅ 可达 |
+| `raw.githubusercontent.com` | ⚠️ 时通时不通（同一网络内半小时内两种结果都出现过） |
+| `github.com:443`（git push 用） | ⚠️ 同上，时通时不通 |
+| `cdn.jsdelivr.net` | ❌ 连不上 |
+
+结论：**国内网络请优先用 Gitee 镜像的一键命令**，GitHub 那条作为备选。建立镜像只需两步（在你的 Gitee 账号下）：
+
+```bash
+# 1. 在 https://gitee.com 新建公开空仓库 wyht-client-debug-skill（不要初始化 README）
+# 2. 本机推送（把 <你的Gitee用户名> 换掉）
+git remote add gitee https://gitee.com/<你的Gitee用户名>/wyht-client-debug-skill.git
+git push gitee main
+```
+
+之后同事用 Gitee 的一键命令：
+
+```powershell
+irm https://gitee.com/<你的Gitee用户名>/wyht-client-debug-skill/raw/main/get.ps1 | iex
+```
+
 ### 内网用户
 
 默认源是 GitHub 公共仓；内网想走内网 GitLab，加一个参数即可（地址只出现在这里，不再是脚本默认值）：

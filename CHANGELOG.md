@@ -1,5 +1,10 @@
 # 变更记录
 
+## 2.6.2
+
+- README 增「网络可达性」：本机实测 Gitee 可用、`objects.githubusercontent.com` 可用、`raw.githubusercontent.com` 与 `github.com:443` 时通时不通、jsDelivr 不可达
+- 给出 Gitee 镜像的两步建立方法与对应一键命令（国内网络优先用 Gitee）
+
 ## 2.6.1
 
 - 新增 `get.ps1` 作为 `irm|iex` 专用入口：纯 ASCII、无 BOM。实测带 BOM 的脚本被管道执行时，BOM 会粘到第一个 token 上，报 `意外的属性 CmdletBinding`
