@@ -17,6 +17,7 @@ metadata:
 ## 前置：一次性 `init`（机器一次 + 项目一次）
 
 ```powershell
+wyht-skill install                      # 机器级：刷新仓库 + 写命令入口（首次由 bootstrap 引导器完成，之后重跑即升级）
 wyht-skill clients add "<客户端目录>"   # 机器级：登记客户端包（目录名形如 WYHT--3.1.1--x64--<时间戳>--<名称>）
 wyht-skill init                         # 项目级：在项目根运行，交互问 webUrl / hisUserId
 ```
@@ -35,6 +36,8 @@ wyht-skill init                         # 项目级：在项目根运行，交�
 ```
 
 `wyht-skill` 从当前目录**向上找** `.wyht-skill.json`；找不到就报错退出（在别的目录操作时先 `init`）。换客户端包：`clients add` 新目录，再 `init --use <新名字>`。
+
+`--repo-url <地址>` / `--ref <tag>` 可换源与指定引用；换源会改 origin 并立即刷新。
 
 ## 标准动作表
 
