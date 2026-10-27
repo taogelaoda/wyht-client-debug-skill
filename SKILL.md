@@ -12,13 +12,13 @@ metadata:
 
 ## 概述
 
-本技能**唯一入口是 `wyht-skill`**（Node ≥ 24 的命令行，零 npm 依赖）：客户端登记、项目初始化、壳侧自检、机器状态、冷启动与退出都在它里面，不再手写脚本或拼 CDP。客户端本身是 CEF 壳 + 多个 Web 窗口，固定暴露 `127.0.0.1:9222`，核心原则不变：**先用壳自己的入口（启动参数 / 配置键 / 壳 API），再考虑系统层手段**（改 hosts、重写 db、杀进程）——后者在演示和联调窗口里翻车率最高，且多数时候根本不需要。
+本技能**唯一入口是 `wyht-skill`**（Node ≥ 24 的命令行，零 npm 依赖）：客户端登记、项目初始化、壳侧自检、机器状态、冷启动与退出都在它里面，不再手写脚本。客户端本身是 CEF 壳 + 多个 Web 窗口，固定暴露 `127.0.0.1:9222`，核心原则不变：**先用壳自己的入口（启动参数 / 配置键 / 壳 API），再考虑系统层手段**（改 hosts、重写 db、杀进程）——后者在演示和联调窗口里翻车率最高，且多数时候根本不需要。
 
 ## 前置：一次性 `init`（机器一次 + 项目一次）
 
 ```powershell
-wyht-skill clients add "D:\WYHT--3.1.1--x64--20261021_102251--医保凭证"   # 机器级：登记客户端包
-wyht-skill init                                                          # 项目级：在项目根运行，交互问 webUrl / hisUserId
+wyht-skill clients add "<客户端目录>"   # 机器级：登记客户端包（目录名形如 WYHT--3.1.1--x64--<时间戳>--<名称>）
+wyht-skill init                         # 项目级：在项目根运行，交互问 webUrl / hisUserId
 ```
 
 - `clients add` 从目录名推版本，自动找 `czht.exe` / `iu.Hrball.exe`；找不到用 `--exe <文件名>`，名字用 `--name <名>` 覆盖。`clients list` 看已登记项（含目录是否还在），`clients rm <名>` 只删登记、不动目录。
@@ -40,12 +40,12 @@ wyht-skill init                                                          # 项�
 
 | 命令 | 何时用 | 产出 | 失败怎么办 |
 |---|---|---|---|
-| `wyht-skill check` | 动手前先跑一次，决定能不能直连 | 判定 + 版本（壳形态与启动语义）+ `ServerUrl` / `HospitalId` + 退出码 `0` 直连 / `2` 安装态 / `3` 前置机 / `4` 读取失败 | `4` = `config.db` 读不到：`clients list` 核对目录，换包后重新 `clients add`；`2` 就走去装机向导，别手改 `IsFirstRun` |
+| `wyht-skill check` | 动手前先跑一次，决定能不能直连 | 判定 + 版本（壳形态与启动语义）+ `ServerUrl` / `HospitalId` + 退出码 `0` 直连 / `2` 安装态 / `3` 前置机 / `4` 读取失败 | `4` = `config.db` 读不到：`clients list` 核对目录，换包后重新 `clients add`；`2` 就走去装机向导，别手改 `IsFirstRun`；`3` 也可能是未初始化 / 客户端未登记，按提示的下一步处理 |
 | `wyht-skill doctor` | 客户端起不来、9222 看不到目标页、怀疑仓库落后 | 进程、`9222`/`8080`/`9321` 端口、本地前端 HTTP 状态、9222 页面清单、仓库落后几个提交、Node 版本 | 端口/进程在但页面不对：先 `stop` 再 `start`；仓库落后：`install` 升级；Node 不足：先装 Node ≥ 24 |
 | `wyht-skill start` | 要让客户端加载本地前端 | 拉起的 PID、命中的本地前端页 URL（默认带 `?logCollect=1`），并写 `%LOCALAPPDATA%\wyht\state.json` | 退出 `3` = 前置条件不满足（exe 不在、9222 已被占、dev server 非 200，都会说明原因）；`1` = 超时内没等到本地页，进程已尝试回收，看客户端 `logs\`、再 `doctor` |
 | `wyht-skill stop` | 改完前端要重启、或收工 | 调 `initObj.exitApplication()` 并验收（进程消失 + 9222 释放） | `3` = 9222 上没有可用业务页：按本文件红线人工处理，不要 `taskkill`；`1` = 验收没在超时内通过，重跑 `doctor` 看进程与端口 |
 
-选项：`--no-log` 去掉 `?logCollect=1`；`--timeout <秒>` 改等待（`start` 默认 30、`stop` 默认 15）；`--client <名>` 临时换包（默认用项目配置里的那个）。退出码 `0` 成功，非 `0` 见上表。
+选项：`start` 的 `--no-log` 去掉 `?logCollect=1`；`--timeout <秒>` 改等待（`start` 默认 30、`stop` 默认 15）；`--client <名>` 临时换包（默认用项目配置里的那个）。退出码 `0` 成功，非 `0` 见上表；`3` 还可能是「未初始化 / 客户端未登记」，按输出里的下一步处理。
 
 ## 版本背景（先确认版本，再套规则）
 
@@ -82,7 +82,7 @@ wyht-skill check    # 只读 config.db（node:sqlite），不改任何东西
 
 装机向导会写 `ServerUrl`、`ClientType`、`HospitalId`、`HospitalUserName`，**最后**才写 `IsFirstRun=false` 并重启。`ServerUrl` 有值不代表装完——判定只看 `IsFirstRun`。前置机地址里 `iuWorkStation` 会在启动时被替换成 `iuPublicClientServer`，两种写法都能通。
 
-`check` 还会打印一行版本（例：`3.1.1（C++ 原生 CEF · 冷/热启动可用）`）；目录名里没有 `x.y.z` 时报"未识别"，按上一节口径人工确认。
+`check` 还会打印一行 `版本`，格式就是代码的实际输出（例：`版本   3.1.1 · C++ 原生 CEF · 冷/热启动可用`）；目录名里没有 `x.y.z` 时打印"未识别"，按上一节口径人工确认。
 
 动手前先报一行：`版本=… · 环境=install|frontend|direct · ServerUrl=… · HospitalId=…`。
 

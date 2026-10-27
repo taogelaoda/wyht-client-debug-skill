@@ -27,8 +27,8 @@
 | `SKILL.md` | 技能入口：一次性 init、标准动作表、环境判定、快速参考、日志通道、常见错误、红线 |
 | `cdp-recipes.md` | 按需加载的 CDP 配方：抓 POST 报文、临时导航并还原、退出客户端、PowerShell 发 CDP |
 | `bin/wyht-skill.mjs` | 唯一入口：参数解析、旧命令报错映射、命令分派 |
-| `bin/lib/*.mjs` | 实现：`config`（两层配置）、`commands`（install / clients / init / check / doctor / start / stop）、`probe`（进程/端口/页面）、`cdp`、`shellconfig`（直读 `config.db`）、`derive`（版本与 exe 推导）、`actions` |
-| `bin/wyht-skill.cmd` | 仓库内的调用包装（纯 ASCII，`node bin/wyht-skill.mjs %*`） |
+| `bin/lib/*.mjs` | 实现：`config`（两层配置）、`commands`（install / clients / init / check / doctor / start / stop）、`probe`（端口 / 进程 / HTTP 状态）、`cdp`（9222 页面清单与调用）、`shellconfig`（直读 `config.db`）、`derive`（版本与 exe 推导）、`actions` |
+| `bin/wyht-skill.cmd` | 仓库内的调用包装（纯 ASCII，`node "%~dp0wyht-skill.mjs" %*`） |
 | `bootstrap/` | 首次使用的一对引导文件：Node 版本闸门 → 克隆仓库 → 写 `%LOCALAPPDATA%\wyht\bin\wyht-skill.cmd` → 追加 User PATH → 转交 CLI |
 | `test/` | `node test/run.mjs` |
 
@@ -81,7 +81,9 @@ wyht-skill stop                  # 壳 API 退出，并验收进程消失 + 9222
 wyht-skill clients list          # 已登记的包；clients rm <名> 只删登记不动目录
 ```
 
-参数：`install` 支持 `--repo-url` `--ref`；`init` 支持 `--use <名>` `--force`；`clients add` 支持 `--name` `--exe`；`start`/`stop`/`check`/`doctor` 支持 `--client <名>`，`start`/`stop` 另有 `--no-log` `--timeout <秒>`。旧命令（`status`、`install -Project/-ClientDir`）不再静默兼容，会直接报错并给出对应新命令。
+参数：`install` 支持 `--repo-url` `--ref`；`init` 支持 `--use <名>` `--force`；`clients add` 支持 `--name` `--exe`；`start`/`stop`/`check`/`doctor` 支持 `--client <名>`，`start` 另有 `--no-log`，`start`/`stop` 支持 `--timeout <秒>`。旧命令（`status`、`install -Project/-ClientDir`）不再静默兼容，会直接报错并给出对应新命令。
+
+退出码：`check` 用 `0/2/3/4` 表示判定（`3` 也可能是未初始化或客户端未登记），其余命令成功 `0`、拒绝或异常非 `0`；具体下一步看输出里的提示。
 
 两层配置由 CLI 读写，不要手编：
 
@@ -133,17 +135,15 @@ git push gitee main  # Gitee 镜像（SSH，密钥已在 Gitee 登记）
 | `install` 时仓库不是 git 仓库 | 打印"未刷新（不是 git 仓库）" |
 | 机器没装 git | 引导器用 GitHub 的 zip 快照解一份工作区（只支持 GitHub 源，后续升级需装 git） |
 | `clients add` 找不到 `czht.exe` / `iu.Hrball.exe` | 报错并要求 `--exe` 指定实际主程序 |
-| `init` 时 `.claude\skills\wyht-client-debug` 不存在 | 建联接，打印版本、提交号与下一步 |
+| `init` 时 `.claude\skills\wyht-client-debug` 不存在 | 建联接，打印客户端目录、前端地址、配置文件与联接路径，并提示下一步 `check` |
 | `init` 时已指向同一仓库 | 幂等重建联接，不重复拷文件 |
 | `init` 时原位置是实体目录（手工副本） | **拒绝**；`--force` 才替换，且先备份成 `*.bak-<时间戳>` |
 | 机器上没登记任何包 | `init` 拒绝并提示先 `clients add` |
-| 已登记多个包 | `init` 交互选序号或名字；`--use <名>` 直接指定 |
-
-退出码：`check` 用 `0/2/3/4` 表示判定，其余命令成功 `0`、任何拒绝或异常非 `0`。
+| 已登记多个包 | 仅当项目配置里没有有效的 `client`（没写过或名字已不在登记表里）时 `init` 才交互选序号或名字；`--use <名>` 直接指定 |
 
 ### 编码约束（踩过才写的）
 
-- 所有 `.ps1`（`get.ps1`、`bootstrap/wyht-skill.ps1`）必须带 **UTF-8 BOM**：PowerShell 5.1 会把无 BOM 脚本按本地 ANSI 解码，中文注释直接导致语法错误。例外是 `get.ps1`——它是 `irm|iex` 专用，必须**纯 ASCII 且无 BOM**。
+- 以文件方式运行的 `.ps1`（`bootstrap/wyht-skill.ps1`）必须带 **UTF-8 BOM**：PowerShell 5.1 会把无 BOM 脚本按本地 ANSI 解码，中文注释直接导致语法错误。`get.ps1` 例外——它走 `irm|iex`，必须**纯 ASCII 且无 BOM**。
 - 所有 `.cmd` 必须**纯 ASCII**：cmd.exe 按 OEM 代码页解码，UTF-8 中文注释会变成乱码甚至被当成命令执行。
 - 原生 `git` 的 stderr 不能并进错误流（`2>&1`），否则 `ErrorActionPreference=Stop` 下会被当成终止错误。
 - CLI 本体是 Node（`bin/*.mjs`），这几条只约束仍存在的 PowerShell 引导文件。

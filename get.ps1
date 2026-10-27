@@ -8,7 +8,8 @@
 # comments survive PowerShell 5.1), write it to %TEMP%, run `install` in the
 # current directory. For arguments use the two-step form:
 #   irm <bootstrap url> -OutFile $env:TEMP\wyht.ps1
-#   & $env:TEMP\wyht.ps1 install -Project '<path>'
+#   & $env:TEMP\wyht.ps1 install
+#   wyht-skill init
 
 $ErrorActionPreference = 'Stop'
 $bootstrapUrl = 'https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/bootstrap/wyht-skill.ps1'

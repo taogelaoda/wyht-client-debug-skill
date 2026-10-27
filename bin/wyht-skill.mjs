@@ -24,7 +24,7 @@ export const HELP = [
   '  start                  冷启动并确认加载本地前端',
   '  stop                   壳 API 退出并验收',
   '',
-  '选项：--client <名> --no-log --timeout <秒> --force --name <名> --exe <文件名> --use <名> --help',
+  '选项：--client <名> --no-log --timeout <秒> --force --name <名> --exe <文件名> --use <名> --repo-url <地址> --ref <tag/分支> --help',
 ].join('\n');
 
 export function parseArgs(argv) {

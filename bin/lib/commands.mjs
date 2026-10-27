@@ -148,6 +148,11 @@ export async function cmdInstall(args, env) {
   // 刷新只在 git 仓库里做，失败只警告：装不装得上不取决于能不能联网
   let refresh = '未刷新（不是 git 仓库）';
   if (fs.existsSync(path.join(repo, '.git'))) {
+    // 换源先改 origin，后面的 pull 才会打到新地址
+    if (args && args.repoUrl) {
+      const setUrl = await runGit(repo, ['remote', 'set-url', 'origin', args.repoUrl]);
+      if (!setUrl.ok) console.error('警告：换源失败（' + setUrl.text + '），继续用当前 origin');
+    }
     let mayPull = true;
     if (args && args.ref) {
       const co = await runGit(repo, ['checkout', '--quiet', args.ref]);
@@ -270,7 +275,7 @@ export async function cmdCheck(args, client, env) {
   const version = deriveClient(client.dir).version;
   env.out('check · ' + verdict.env, [
     '  客户端 ' + client.dir,
-    '  版本   ' + (version || '未识别') + '（' + versionSemantics(version).text + '）',
+    '  版本   ' + (version ? versionSemantics(version).text : '未识别（目录名里没有 x.y.z）'),
     '  ServerUrl ' + (cfg.ServerUrl || '<空>') + '  HospitalId ' + (cfg.HospitalId || '<空>'),
     '  判定   ' + verdict.reason,
   ]);
