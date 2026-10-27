@@ -53,10 +53,11 @@ function isPrivateHost(host) {
 
 export function classify(cfg) {
   const rawFirst = cfg.IsFirstRun;
-  // 缺键与 SQL NULL 同义；值统一 trim+小写后再判（' 1 ' 也算安装态）
+  // 只有 缺键 / SQL NULL 才算安装态（与原 python 一致）；空串不算，继续按 ServerUrl 判定
   // 宿主读配置的默认值是 true：键缺失同样算安装态，不能当已装
-  const firstText = rawFirst === undefined || rawFirst === null ? '' : String(rawFirst).trim().toLowerCase();
-  const isFirst = firstText === '' || firstText === 'true' || firstText === '1';
+  const isFirst = rawFirst === undefined || rawFirst === null
+    ? true
+    : ['true', '1'].indexOf(String(rawFirst).trim().toLowerCase()) !== -1;
   const serverUrl = String(cfg.ServerUrl || '').trim();
   if (isFirst) {
     const shown = rawFirst === undefined || rawFirst === null ? '缺失（按 true 处理）' : rawFirst;

@@ -39,6 +39,8 @@ export default [
       // 值两侧有空白、SQL NULL 都算安装态，与 python 一致
       assert.strictEqual(classify({ IsFirstRun: ' 1 ' }).env, 'install');
       assert.strictEqual(classify({ IsFirstRun: null, ServerUrl: 'http://x' }).env, 'install');
+      // 但空串不是缺键：继续按 ServerUrl 判定
+      assert.strictEqual(classify({ IsFirstRun: '', ServerUrl: 'http://1.2.3.4/x' }).env, 'direct');
     },
   },
   {
