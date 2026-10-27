@@ -9,7 +9,9 @@ const failures = [];
 
 for (const file of files) {
   const mod = await import(pathToFileURL(path.join(dir, file)).href);
-  for (const c of mod.default || []) {
+  const cases = mod.default;
+  if (!Array.isArray(cases)) throw new Error(file + ' 必须 `export default [{ name, fn }]`，实际: ' + typeof cases);
+  for (const c of cases) {
     try {
       await c.fn();
       passed += 1;
