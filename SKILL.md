@@ -1,7 +1,7 @@
 ---
 name: wyht-client-debug
 description: 当需要在真实 CEF 医生客户端里验证前端改动、抓取请求报文、或重启客户端加载本地代码时使用；按版本分流（≥3.0 为 C++ 壳、<3.0 为 C# 壳，冷/热启动只有 ≥3.1.0 才有），也适用于宿主内页打不开 DevTools 需要走日志采集、9222 端口只见 about:blank、热启动改不动页面、以及准备改 config.db / hosts / 杀进程绕过客户端限制的场景。
-version: "3.0.0"
+version: "3.1.0"
 license: MIT
 metadata:
   hermes:
@@ -47,6 +47,27 @@ wyht-skill init                         # 项目级：在项目根运行，交�
 | `wyht-skill doctor` | 客户端起不来、9222 看不到目标页、怀疑仓库落后 | 版本（壳形态与启动语义）、进程、`9222`/`8080`/`9321` 端口、本地前端 HTTP 状态、9222 页面清单、仓库落后几个提交、Node 版本 | 端口/进程在但页面不对：先 `stop` 再 `start`；仓库落后：`install` 升级；Node 不足：先装 Node ≥ 24 |
 | `wyht-skill start` | 要让客户端加载本地前端 | 拉起的 PID、命中的本地前端页 URL（默认带 `?logCollect=1`），并写 `%LOCALAPPDATA%\wyht\state.json` | 退出 `3` = 前置条件不满足（exe 不在、9222 已被占、dev server 非 200，都会说明原因）；`1` = 超时内没等到本地页，进程已尝试回收，看客户端 `logs\`、再 `doctor` |
 | `wyht-skill stop` | 改完前端要重启、或收工 | 调 `initObj.exitApplication()` 并验收（进程消失 + 9222 释放） | `3` = 9222 上没有可用业务页：按本文件红线人工处理，不要 `taskkill`；`1` = 验收没在超时内通过，重跑 `doctor` 看进程与端口 |
+
+| `wyht-skill page [过滤词]` | 要看 9222 上到底有哪些页面、哪个是主窗/气泡 | 页面目标清单（type + url），可按 URL 子串过滤 | 退出 `3` = 列不到页面：`start` 冷启动，或 `doctor` 看端口与进程 |
+| `wyht-skill eval "<表达式>"` | 要读页面里的状态（`initObj`、Vuex、DOM、`location`）做取证 | 命中的页面 URL + 表达式结果；页面脚本抛异常时会打印异常首行 | `3` = 没页面；`1` = 表达式抛错或超时，先 `page` 确认页面对不对 |
+| `wyht-skill windows [过滤词]` | 要看 CDP 看不到的窗口（悬浮球等原生窗），确认窗体在不在、在哪 | 可见窗口的 `标题 · 类名 · PID · 宽x高 @(x,y)`，按标题或类名过滤 | 退出 `3` = 没有匹配窗口：`page` 看页面，或 `start` 冷启动 |
+
+## 验证一次改动（标准剧本）
+
+四步，全部用上面的命令，不用手搓 CDP：
+
+1. **备**：先 `wyht-skill doctor` 看有没有别人的实例（有就先 `stop`），再 `wyht-skill start` 冷启动到本地前端，用 `page` 确认 URL 以配置里的 `webUrl` 开头。
+2. **造前置状态**：用 `eval` 把缺陷条件做出来。例：验证"登录后旧气泡残留"，先造一个残留气泡
+   `wyht-skill eval "initObj.openBubble('http://localhost:8080/yl-client-web/bubble?isfirst=1&message=请重新登录','客户端系统-消息提醒','0')"`
+   （注意：`initObj` 上**没有** `openLegacyBubble`，SDK 的该方法映射到 `initObj.openBubble`；方法名不确定就先 `eval "Object.keys(initObj)"`。）
+3. **触发**：登录/切换账号这类"改变状态"的动作，要么点真实 UI，要么用 `eval` 改 `location`
+   `wyht-skill eval "location.href='http://localhost:8080/yl-client-web/login?hisUserId=zgt&logCollect=1&key=2016'"`
+   （本机构建登录需要后端测试 `key`；`start` 拼的 URL 不带它。）
+4. **取证**：`page` 看页面（残留的 `bubble?isfirst=1` 应消失、变成 `bubble`），`eval` 读状态
+   `wyht-skill eval "initObj.getAllFormNames()"`（同名窗体应只有一个）、
+   `eval "document.body.innerText"`（气泡应为空）。最后 `stop` 收尾并确认 9222 释放。
+
+> 取证要写"改动前会怎样"。比如上面这条：改动前气泡正文是「请重新登录」，改动后为空——只报"现在是空的"不算验证。
 
 选项：`start` 的 `--no-log` 去掉 `?logCollect=1`；`--timeout <秒>` 改等待（`start` 默认 30、`stop` 默认 15）；`--client <名>` 临时换包（默认用项目配置里的那个）。退出码 `0` 成功，非 `0` 见上表；`3` 还可能是「未初始化 / 客户端未登记」，按输出里的下一步处理。
 
@@ -124,6 +145,8 @@ wyht-skill check    # 只读 config.db（node:sqlite），不改任何东西
 | 想用 `openNewBall` 再开一个球做实验 | 悬浮球**全客户端唯一**：宿主日志 `openNewBall: 悬浮球已存在，先关闭旧球再按新参数重建`——真球会被替换掉。要验证球状态就改现成的球 |
 | 把 `Draggable` 当窗体属性排查 | 它是**持久化全局设置**（落 `config.db` 的 `WebSetting.Draggable`），最后写入者生效、与窗体无关；手工改过要恢复，否则污染这台机器 |
 | 为了验证缩放去调 `setZoomLevel` | 本机构建实测：传 `1` 或 `0` 都会**直接退出整个客户端**（3/3 复现），只做 `typeof` 检查，不要执行 |
+| 直接调 `initObj.openLegacyBubble(...)` | 3.1.1 的宿主里**没有这个方法**（`TypeError: not a function`）：SDK 的 `openLegacyBubble` 是封装，落到 `initObj.openBubble(url, formName, site)`。方法名不确定时先 `wyht-skill eval "Object.keys(initObj)"` 枚举，别按 SDK 函数名猜宿主方法名 |
+| 以为 `windows` 能按窗体名找到气泡窗 | 原生窗口标题是**窗口标题**（如 `客户端系统-机器人` / `FloatBall`），气泡窗常不可见或标题为空。找气泡用 `page`，找球/主窗用 `windows 机器人` |
 | 把 `getLocalPrinters()` 当数组 | 实际返回 `{code,datas:[{printName}],message,success}` 的 JSON 字符串，名字在 `datas[].printName` |
 
 ## 红线 —— 停下，换正确入口

@@ -86,6 +86,14 @@ wyht-skill init                                                          # 项�
 wyht-skill check                                                         # 壳侧自检：0 直连 / 2 安装态 / 3 前置机 / 4 读取失败
 ```
 
+验证 / 排查（取证用，不改变状态）：
+
+```powershell
+wyht-skill page                                                          # 9222 上的页面清单（可按 URL 子串过滤）
+wyht-skill eval "Object.keys(initObj)"                                   # 在项目页面里执行 JS 取证
+wyht-skill windows 机器人                                                # 原生窗口（CDP 看不到的悬浮球等）
+```
+
 日常动作：
 
 ```powershell

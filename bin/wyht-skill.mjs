@@ -6,9 +6,10 @@ import { fileURLToPath } from 'url';
 import { findProjectFile, readProject, readClients, resolveClient, clientsFilePath } from './lib/config.mjs';
 import {
   cmdInstall, cmdClients, cmdInit, cmdCheck, cmdDoctor, cmdStart, cmdStop,
+  cmdPage, cmdEval, cmdWindows,
 } from './lib/commands.mjs';
 
-export const COMMANDS = ['install', 'clients', 'init', 'check', 'doctor', 'start', 'stop'];
+export const COMMANDS = ['install', 'clients', 'init', 'check', 'doctor', 'start', 'stop', 'page', 'eval', 'windows'];
 
 export const HELP = [
   'wyht-skill —— 皖医互通客户端调试技能',
@@ -24,13 +25,18 @@ export const HELP = [
   '  start                  冷启动并确认加载本地前端',
   '  stop                   壳 API 退出并验收',
   '',
-  '选项：--client <名> --no-log --timeout <秒> --force --name <名> --exe <文件名> --use <名> --web-url <地址> --his-user-id <ID> --repo-url <地址> --ref <tag/分支> --help',
+  '验证（改动是否在客户端里生效）：',
+  '  page [过滤词]          列出 9222 上的页面目标',
+  '  eval <表达式>          在当前项目页面里执行 JS 并打印结果（表达式加引号）',
+  '  windows [过滤词]       列出可见原生窗口（标题/类名/PID/位置）',
+  '',
+  '选项：--client <名> --page <子串> --no-log --timeout <秒> --force --name <名> --exe <文件名> --use <名> --web-url <地址> --his-user-id <ID> --repo-url <地址> --ref <tag/分支> --help',
 ].join('\n');
 
 export function parseArgs(argv) {
   const args = {
     command: 'install', sub: null, rest: [], log: true, timeout: null,
-    client: null, name: null, exe: null, use: null, ref: null, repoUrl: null, force: false, help: false,
+    client: null, name: null, exe: null, use: null, ref: null, repoUrl: null, page: null, force: false, help: false,
     webUrl: null, hisUserId: null,
   };
   const list = argv.slice();
@@ -60,6 +66,7 @@ export function parseArgs(argv) {
     }
     else if (token === '--ref') args.ref = list[++i];
     else if (token === '--repo-url') args.repoUrl = list[++i];
+    else if (token === '--page') args.page = list[++i];
     else if (token === '--timeout') {
       args.timeout = parseInt(list[++i], 10);
       if (isNaN(args.timeout)) throw new Error('未知选项的值：--timeout 需要秒数');
@@ -115,6 +122,8 @@ async function main() {
 
   if (args.command === 'install') return cmdInstall(args, env);
   if (args.command === 'clients') return cmdClients(args, env);
+  // windows 不依赖项目配置：它看的是会话里的原生窗口
+  if (args.command === 'windows') return cmdWindows(args, env);
 
   const projectFile = findProjectFile(projectRoot);
   let project = null;
@@ -149,6 +158,8 @@ async function main() {
   if (args.command === 'doctor') return cmdDoctor(args, project, client, env);
   if (args.command === 'start') return cmdStart(args, project, client, env);
   if (args.command === 'stop') return cmdStop(args, project, client, env);
+  if (args.command === 'page') return cmdPage(args, env);
+  if (args.command === 'eval') return cmdEval(args, project, env);
   return 1;
 }
 

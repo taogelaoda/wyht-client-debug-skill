@@ -1,5 +1,12 @@
 # 变更记录
 
+## 3.1.0
+
+- 新增三个**验证**命令：`page [过滤词]`（9222 页面清单）、`eval "<表达式>"`（在项目页面里执行 JS 取证，优先非气泡页）、`windows [过滤词]`（原生窗口：标题/类名/PID/位置，看 CDP 看不到的悬浮球等）
+- `bin/lib/win.mjs`：用 `-EncodedCommand` 传 PowerShell 脚本枚举窗口，绕开命令行引号改写；输出强制 UTF-8，中文标题不乱码
+- SKILL.md 新增「验证一次改动（标准剧本）」：备 → 造前置状态 → 触发 → 取证，含本机登录需要 `key=2016` 的实测结论
+- 常见错误补两条：`initObj` 没有 `openLegacyBubble`（SDK 映射到 `openBubble`，先 `Object.keys(initObj)` 枚举）；`windows` 按窗口标题/类名过滤，找气泡要用 `page`
+
 ## 3.0.0
 
 - **命令面重构**：唯一入口改为 `bin/wyht-skill.mjs`（Node CLI，零 npm 依赖），按使用层级拆开——

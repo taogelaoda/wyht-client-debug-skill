@@ -12,6 +12,7 @@ import { listeningPorts, portListening, processesByName, httpStatus, sleep } fro
 import { listPages, pickPage, evaluate, waitForPage } from './cdp.mjs';
 import { readShellConfig, classify, checkExitCode } from './shellconfig.mjs';
 import { buildDoctorReport, buildStartUrl, startPreflight, stopVerdict, matchLocalPage } from './actions.mjs';
+import { nativeWindows, filterWindows } from './win.mjs';
 
 export function addClientEntry(store, dir, options) {
   const opts = options || {};
@@ -481,4 +482,162 @@ export async function cmdStop(args, project, client, env) {
   lines.push(verdict.message);
   env.out('stop · ' + (verdict.exitCode === 0 ? '成功' : '失败'), lines);
   return verdict.exitCode;
+}
+
+
+// ---- 验证用命令：page / eval / windows ----
+
+/**
+ * 页面清单的一行文本（纯函数，便于单测）。
+ *
+ * @param {{type?: string, url?: string}} page - CDP 目标。
+ * @returns {string} 形如 `  page  http://…`。
+ */
+export function formatPageLine(page) {
+  return '  ' + String((page && page.type) || 'page') + '  ' + String((page && page.url) || '');
+}
+
+/**
+ * 从 CDP `Runtime.evaluate` 的结果里取可读文本。
+ *
+ * 返回形状是 CDP 原样 `{result:{type,value?}}`：有 `value` 用值，否则回退整段 JSON
+ * （对象/数组/函数没有 `value`）。
+ *
+ * @param {Object} res - evaluate() 的返回值。
+ * @returns {{ has: boolean, text: string }} has=false 表示结果里没有 result。
+ */
+export function extractEvalValue(res) {
+  if (!res || !res.result) return { has: false, text: JSON.stringify(res) };
+  const r = res.result;
+  if (Object.prototype.hasOwnProperty.call(r, 'value')) {
+    const v = r.value;
+    return { has: true, text: typeof v === 'string' ? v : JSON.stringify(v) };
+  }
+  return { has: true, text: JSON.stringify(r) };
+}
+
+/**
+ * `page`：列出 9222 上的页面目标（可按 URL 子串过滤）。
+ *
+ * @param {Object} args - 解析后的参数，`args.rest[0]` 作过滤词。
+ * @param {Object} env - { out, err }。
+ * @returns {Promise<number>} 退出码。
+ */
+export async function cmdPage(args, env) {
+  const filter = args.rest && args.rest[0] ? String(args.rest[0]) : '';
+  const pages = (await listPages()) || [];
+  const shown = filter ? pages.filter((p) => String(p.url || '').indexOf(filter) !== -1) : pages;
+  if (!shown.length) {
+    env.out('page · 没有匹配的页面', [
+      filter ? '  过滤词：' + filter : '  9222 上列不到任何页面目标',
+      '  下一步：wyht-skill start 冷启动；若已启动，wyht-skill doctor 看端口与进程',
+    ]);
+    return 3;
+  }
+  env.out('page · ' + shown.length + ' 个', shown.map(formatPageLine));
+  return 0;
+}
+
+/**
+ * `eval <表达式>`：在当前项目的页面里执行 JS 并打印结果。
+ *
+ * 页面优先取 URL 以 webUrl 开头的目标，找不到再退回第一个业务页（气泡页等也算），
+ * 并在输出里点名实际选中的页面，便于判断结果来源。
+ *
+ * @param {Object} args - `args.rest.join(' ')` 是表达式。
+ * @param {Object} project - 项目配置（含 webUrl）。
+ * @param {Object} env - { out, err }。
+ * @returns {Promise<number>} 退出码。
+ */
+export async function cmdEval(args, project, env) {
+  const expression = (args.rest || []).join(' ').trim();
+  if (!expression) {
+    env.out('eval · 缺少表达式', [
+      '  下一步：wyht-skill eval "Object.keys(initObj)"（表达式要加引号，避免被 shell 拆开）',
+    ]);
+    return 1;
+  }
+  const pages = (await listPages()) || [];
+  // --page <子串> 精确指定要评估的页面（读气泡页状态时必用）
+  if (args.page) {
+    const hit = pages.filter((p) => p.type === 'page' && String(p.url || '').indexOf(args.page) !== -1)[0];
+    if (!hit) {
+      env.out('eval · 前置条件未满足', [
+        '  没有 URL 含「' + args.page + '」的页面',
+        '  下一步：wyht-skill page 看现有页面，再用 --page <子串> 指定',
+      ]);
+      return 3;
+    }
+  }
+  // 同一 webUrl 下常同时有主窗与气泡窗：未指定 --page 时优先非气泡页，避免把结果读成气泡页的状态
+  const sameOrigin = pages.filter((p) => p.type === 'page' && String(p.url || '').indexOf(project.webUrl) === 0);
+  const page = (args.page ? pages.filter((p) => p.type === 'page' && String(p.url || '').indexOf(args.page) !== -1)[0] : null)
+    || sameOrigin.filter((p) => String(p.url).indexOf('/bubble') === -1)[0]
+    || pickPage(pages, project.webUrl);
+  if (!page) {
+    env.out('eval · 前置条件未满足', [
+      '  9222 上没有可用的页面目标',
+      '  下一步：wyht-skill start 冷启动，或 wyht-skill page 看当前页面',
+    ]);
+    return 3;
+  }
+  let res;
+  try {
+    res = await evaluate(page, expression, { timeoutMs: 8000 });
+  } catch (err) {
+    env.out('eval · 失败', [
+      '  页面 ' + page.url,
+      '  ' + (err && err.message ? err.message : err),
+      '  下一步：wyht-skill page 确认页面对不对；必要时 wyht-skill doctor',
+    ]);
+    return 1;
+  }
+  if (res && res.exceptionDetails) {
+    const detail = res.exceptionDetails;
+    const desc = (detail.exception && detail.exception.description) || detail.text || '未知异常';
+    env.out('eval · 页面脚本异常', [
+      '  页面 ' + page.url,
+      '  ' + String(desc).split('\n')[0].slice(0, 300),
+      '  下一步：表达式里引用的对象可能不存在（先 wyht-skill eval "Object.keys(window).length"）',
+    ]);
+    return 1;
+  }
+  const value = extractEvalValue(res);
+  env.out('eval · 成功', [
+    '  页面 ' + page.url,
+    '  结果 ' + value.text,
+  ]);
+  return 0;
+}
+
+/**
+ * `windows [过滤词]`：列出可见原生窗口（标题 / 类名 / PID / 位置尺寸）。
+ *
+ * 用于排查 CDP 看不到的窗口（如悬浮球），或确认某个窗体是否真的被建/关。
+ *
+ * @param {Object} args - `args.rest[0]` 作过滤词（匹配标题或类名）。
+ * @param {Object} env - { out, err }。
+ * @returns {Promise<number>} 退出码。
+ */
+export async function cmdWindows(args, env) {
+  const needle = args.rest && args.rest[0] ? String(args.rest[0]) : '';
+  const result = await nativeWindows();
+  if (!result.ok) {
+    env.out('windows · 失败', [
+      '  ' + (result.text || '未知错误'),
+      '  下一步：确认 powershell 可用（Windows 自带）；仍失败就用 wyht-skill page 只看页面',
+    ]);
+    return 1;
+  }
+  const rows = filterWindows(result.rows, needle);
+  if (!rows.length) {
+    env.out('windows · 没有匹配的窗口', [
+      needle ? '  过滤词：' + needle : '  当前会话没有可见窗口',
+      '  下一步：wyht-skill page 看页面目标；或 wyht-skill start 冷启动',
+    ]);
+    return 3;
+  }
+  env.out('windows · ' + rows.length + ' 个' + (needle ? '（过滤 "' + needle + '"）' : ''), rows.map((w) =>
+    '  ' + (w.title || '(无标题)') + ' · ' + w.cls + ' · pid ' + w.pid + ' · ' + w.w + 'x' + w.h + ' @(' + w.l + ',' + w.t + ')'));
+  return 0;
 }
