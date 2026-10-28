@@ -58,6 +58,7 @@ export function stopVerdict(input) {
 export function buildDoctorReport(input) {
   const lines = [];
   const mark = (ok) => (ok ? '✅' : '❌');
+  if (input.version) lines.push('  版本     ' + input.version);
   lines.push('  Node     ' + (input.nodeVersion || '未检测到'));
   lines.push('  技能仓库 ' + (input.repoVersion || '未知') +
     (input.behind === null ? '（远端不可达）' : '（落后 ' + input.behind + ' 个提交）'));

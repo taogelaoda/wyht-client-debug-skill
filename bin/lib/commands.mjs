@@ -218,14 +218,17 @@ export async function cmdInit(args, projectRoot, project, env) {
     return 1;
   }
 
-  const webUrl = existing.webUrl || args.webUrl
+  const webUrl = args.webUrl || existing.webUrl
     || (nonInteractive ? '' : await ask('本地前端地址', 'http://localhost:8080/yl-client-web'));
   if (!webUrl) {
     env.err('init · 缺少本地前端地址');
     console.error('  下一步：加 --web-url http://localhost:8080/yl-client-web 重跑（非交互环境不支持提问）');
     return 1;
   }
-  const hisUserId = existing.hisUserId || args.hisUserId || (nonInteractive ? '' : await ask('hisUserId（可留空）', ''));
+  // --his-user-id "" 要能显式清空，所以判的是"传没传"，不是"有没有值"
+  const hisUserId = args.hisUserId !== undefined && args.hisUserId !== null
+    ? args.hisUserId
+    : (existing.hisUserId || (nonInteractive ? '' : await ask('hisUserId（可留空）', '')));
 
   // 校验都通过了才写盘，避免失败时留下半套配置
   writeProject(projectRoot, { version: 1, client: chosen, webUrl, hisUserId });
@@ -310,9 +313,11 @@ export async function cmdDoctor(args, project, client, env) {
   const pages = await listPages();
   const delta = await remoteBehind(env.repoDir);
   const pkg = JSON.parse(fs.readFileSync(path.join(env.repoDir, 'package.json'), 'utf8'));
+  const version = deriveClient(client.dir).version;
   env.out('doctor · 已收集', buildDoctorReport({
     nodeVersion: process.version,
     repoVersion: pkg.version,
+    version: version ? versionSemantics(version).text : null,
     behind: delta ? delta.behind : null,
     ports,
     processes: procs,
@@ -323,10 +328,15 @@ export async function cmdDoctor(args, project, client, env) {
   return 0;
 }
 
+// PowerShell 双引号会展开 $ 与反引号：路径含这些字符时必须用单引号（内部 ' 写成 ''）
+function psQuote(value) {
+  return "'" + String(value).replace(/'/g, "''") + "'";
+}
+
 export function startProcessCommand(exePath, url, cwd) {
-  return 'Start-Process -FilePath ' + JSON.stringify(exePath) +
-    ' -ArgumentList ' + JSON.stringify('--url=' + url) +
-    ' -WorkingDirectory ' + JSON.stringify(cwd) +
+  return 'Start-Process -FilePath ' + psQuote(exePath) +
+    ' -ArgumentList ' + psQuote('--url=' + url) +
+    ' -WorkingDirectory ' + psQuote(cwd) +
     ' -PassThru | Select-Object -ExpandProperty Id';
 }
 

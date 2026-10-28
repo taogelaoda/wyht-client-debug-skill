@@ -61,6 +61,18 @@ irm https://raw.githubusercontent.com/taogelaoda/wyht-client-debug-skill/main/ge
 
 > 实测注意：GitHub raw 有 CDN 缓存，刚 push 完可能仍在发上一版（实测 10 分钟未刷新，加 `?x=1` 也不生效）；Gitee raw 会 302 到 `raw.giteeusercontent.com`，`irm` 会自动跟随。改 `get.ps1` 本身后要等缓存过期才对外生效。
 
+### 从 2.x 升级
+
+**重跑上面那条一键安装**，别先跑 `wyht-skill install`：
+
+```powershell
+irm https://gitee.com/zhu-gangtao/wyht-client-debug-skill/raw/main/get.ps1 | iex
+```
+
+2.x 留下的 `%LOCALAPPDATA%\wyht\bin\wyht-skill.cmd` 指向 3.0 已删掉的 `bin\wyht-skill.ps1`，直接跑 `wyht-skill install` 会先坏一次。3.0 的 bootstrap 会先对已有克隆 `git pull --ff-only`，再按内容差异重写这个 `.cmd`，所以重跑即自愈。
+
+升级后新开终端跑 `wyht-skill --help`，应能列出 `install` `clients` `init` `check` `doctor` `start` `stop` 7 个子命令。
+
 ## 用法
 
 装好之后，在项目根依次跑这四步（前两步各一次，后两步常用）：

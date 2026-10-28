@@ -13,6 +13,7 @@
 - **两层配置**：项目级 `<项目根>\.wyht-skill.json`（向上发现）+ 机器级 `%LOCALAPPDATA%\wyht\clients.json`；业务参数（包路径、exe、前端地址）全由 CLI 读取，不再写进 `SKILL.md`
 - 要求 **Node ≥ 24**（用内建 `fetch` / `WebSocket` / `node:sqlite`，不再装任何依赖）；引导器在最前面加 Node 版本闸门，不满足就不克隆、不写入口
 - **删除 `scripts/check_env.py`**（并入 `wyht-skill check`，也不再需要 python）与旧 **`bin/wyht-skill.ps1`**（逻辑搬到 `bin/wyht-skill.mjs` + `bin/lib/*`）
+- **从 2.x 升级：重跑一键安装即可**（`irm https://gitee.com/zhu-gangtao/wyht-client-debug-skill/raw/main/get.ps1 | iex`）——bootstrap 先对已有克隆 `git pull --ff-only`，再按内容差异重写 `%LOCALAPPDATA%\wyht\bin\wyht-skill.cmd`；旧的 2.x shim 指向已删的 `bin\wyht-skill.ps1`，直接跑 `wyht-skill install` 会先坏一次。升级后 `wyht-skill --help` 应列出 7 个子命令
 - **旧命令不静默兼容**：`status` → `doctor`，`install -Project/-ClientDir` → `install` + `init`，`install --force` 无强制对象——一律报错并给出新用法，不做兜底
 - 宿主陷阱全部保留：`/login` 导航整壳退出、`setZoomLevel` 整壳退出、`closeForm` 连主窗、`openNewBall` 换球、`Draggable` 全局持久化、CefSharp 手册不适用、`getLocalPrinters` 返回结构等
 
