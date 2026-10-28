@@ -52,7 +52,12 @@ export function parseArgs(argv) {
     else if (token === '--exe') args.exe = list[++i];
     else if (token === '--use') args.use = list[++i];
     else if (token === '--web-url') args.webUrl = list[++i];
-    else if (token === '--his-user-id') args.hisUserId = list[++i];
+    else if (token === '--his-user-id') {
+      const next = list[i + 1];
+      // PowerShell 会丢掉空串参数；裸 --his-user-id 等价“清空”
+      if (next === undefined || String(next).indexOf('--') === 0) { args.hisUserId = ''; }
+      else { args.hisUserId = list[++i]; }
+    }
     else if (token === '--ref') args.ref = list[++i];
     else if (token === '--repo-url') args.repoUrl = list[++i];
     else if (token === '--timeout') {

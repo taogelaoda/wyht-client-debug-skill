@@ -87,7 +87,7 @@ wyht-skill check                                                         # 壳�
 日常动作：
 
 ```powershell
-wyht-skill doctor                # 进程 / 端口 / 本地前端 / 仓库落后 / Node 版本
+wyht-skill doctor                # 版本 / 进程 / 端口 / 本地前端 / 仓库落后 / Node 版本
 wyht-skill start                 # 冷启动并确认加载本地前端（默认带 ?logCollect=1）
 wyht-skill stop                  # 壳 API 退出，并验收进程消失 + 9222 释放
 wyht-skill clients list          # 已登记的包；clients rm <名> 只删登记不动目录

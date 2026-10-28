@@ -7,7 +7,7 @@
   - `clients list|add <目录>|rm <名>`（机器级）：客户端包登记，`add` 支持 `--name` `--exe`
   - `init`（项目级）：交互问 `webUrl` / `hisUserId`，写 `.wyht-skill.json`（并加进 `.gitignore`）、建 `.claude\skills\wyht-client-debug` 联接；参数 `--use` `--force`
   - `check`：壳侧自检，`node:sqlite` 直读 `config.db`，退出码 `0` 直连 / `2` 安装态 / `3` 前置机 / `4` 读取失败
-  - `doctor`：进程、端口、本地前端、仓库落后、Node 版本
+  - `doctor`：版本（壳形态与启动语义）、进程、端口、本地前端、仓库落后、Node 版本
   - `start`：冷启动（默认带 `?logCollect=1`），判定本地前端页确实加载才返回成功；参数 `--no-log` `--timeout`
   - `stop`：壳 API 退出 + 两条验收（进程消失、9222 释放）
 - **两层配置**：项目级 `<项目根>\.wyht-skill.json`（向上发现）+ 机器级 `%LOCALAPPDATA%\wyht\clients.json`；业务参数（包路径、exe、前端地址）全由 CLI 读取，不再写进 `SKILL.md`

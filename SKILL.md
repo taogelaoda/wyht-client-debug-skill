@@ -44,7 +44,7 @@ wyht-skill init                         # 项目级：在项目根运行，交�
 | 命令 | 何时用 | 产出 | 失败怎么办 |
 |---|---|---|---|
 | `wyht-skill check` | 动手前先跑一次，决定能不能直连 | 判定 + 版本（壳形态与启动语义）+ `ServerUrl` / `HospitalId` + 退出码 `0` 直连 / `2` 安装态 / `3` 前置机 / `4` 读取失败 | `4` = `config.db` 读不到：`clients list` 核对目录，换包后重新 `clients add`；`2` 就走去装机向导，别手改 `IsFirstRun`；`3` 也可能是未初始化 / 客户端未登记，按提示的下一步处理 |
-| `wyht-skill doctor` | 客户端起不来、9222 看不到目标页、怀疑仓库落后 | 进程、`9222`/`8080`/`9321` 端口、本地前端 HTTP 状态、9222 页面清单、仓库落后几个提交、Node 版本 | 端口/进程在但页面不对：先 `stop` 再 `start`；仓库落后：`install` 升级；Node 不足：先装 Node ≥ 24 |
+| `wyht-skill doctor` | 客户端起不来、9222 看不到目标页、怀疑仓库落后 | 版本（壳形态与启动语义）、进程、`9222`/`8080`/`9321` 端口、本地前端 HTTP 状态、9222 页面清单、仓库落后几个提交、Node 版本 | 端口/进程在但页面不对：先 `stop` 再 `start`；仓库落后：`install` 升级；Node 不足：先装 Node ≥ 24 |
 | `wyht-skill start` | 要让客户端加载本地前端 | 拉起的 PID、命中的本地前端页 URL（默认带 `?logCollect=1`），并写 `%LOCALAPPDATA%\wyht\state.json` | 退出 `3` = 前置条件不满足（exe 不在、9222 已被占、dev server 非 200，都会说明原因）；`1` = 超时内没等到本地页，进程已尝试回收，看客户端 `logs\`、再 `doctor` |
 | `wyht-skill stop` | 改完前端要重启、或收工 | 调 `initObj.exitApplication()` 并验收（进程消失 + 9222 释放） | `3` = 9222 上没有可用业务页：按本文件红线人工处理，不要 `taskkill`；`1` = 验收没在超时内通过，重跑 `doctor` 看进程与端口 |
 

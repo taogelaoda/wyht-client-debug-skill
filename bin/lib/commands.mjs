@@ -317,7 +317,7 @@ export async function cmdDoctor(args, project, client, env) {
   env.out('doctor · 已收集', buildDoctorReport({
     nodeVersion: process.version,
     repoVersion: pkg.version,
-    version: version ? versionSemantics(version).text : null,
+    version: versionSemantics(version).text,
     behind: delta ? delta.behind : null,
     ports,
     processes: procs,
