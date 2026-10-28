@@ -1,7 +1,7 @@
 ---
 name: wyht-client-debug
 description: 当需要在真实 CEF 医生客户端里验证前端改动、抓取请求报文、或重启客户端加载本地代码时使用；按版本分流（≥3.0 为 C++ 壳、<3.0 为 C# 壳，冷/热启动只有 ≥3.1.0 才有），也适用于宿主内页打不开 DevTools 需要走日志采集、9222 端口只见 about:blank、热启动改不动页面、以及准备改 config.db / hosts / 杀进程绕过客户端限制的场景。
-version: "3.1.0"
+version: "3.1.1"
 license: MIT
 metadata:
   hermes:
@@ -49,8 +49,8 @@ wyht-skill init                         # 项目级：在项目根运行，交�
 | `wyht-skill stop` | 改完前端要重启、或收工 | 调 `initObj.exitApplication()` 并验收（进程消失 + 9222 释放） | `3` = 9222 上没有可用业务页：按本文件红线人工处理，不要 `taskkill`；`1` = 验收没在超时内通过，重跑 `doctor` 看进程与端口 |
 
 | `wyht-skill page [过滤词]` | 要看 9222 上到底有哪些页面、哪个是主窗/气泡 | 页面目标清单（type + url），可按 URL 子串过滤 | 退出 `3` = 列不到页面：`start` 冷启动，或 `doctor` 看端口与进程 |
-| `wyht-skill eval "<表达式>"` | 要读页面里的状态（`initObj`、Vuex、DOM、`location`）做取证 | 命中的页面 URL + 表达式结果；页面脚本抛异常时会打印异常首行 | `3` = 没页面；`1` = 表达式抛错或超时，先 `page` 确认页面对不对 |
-| `wyht-skill windows [过滤词]` | 要看 CDP 看不到的窗口（悬浮球等原生窗），确认窗体在不在、在哪 | 可见窗口的 `标题 · 类名 · PID · 宽x高 @(x,y)`，按标题或类名过滤 | 退出 `3` = 没有匹配窗口：`page` 看页面，或 `start` 冷启动 |
+| `wyht-skill eval "<表达式>"` | 要读页面里的状态（`initObj`、Vuex、DOM、`location`）做取证；`--page <子串>` 精确指定页面（读气泡页必用，默认优先非气泡页） | 命中的页面 URL + 表达式结果；页面脚本抛异常时会打印异常首行 | `3` = 没页面 / `--page` 没命中；`1` = 表达式抛错或超时（单次 8s），先 `page` 确认页面对不对 |
+| `wyht-skill windows [过滤词]` | 要看 CDP 看不到的窗口（悬浮球等原生窗），确认窗体在不在、在哪。过滤词匹配**窗口标题或类名**（`机器人`、`FloatBall`），不是窗体名 | 可见窗口的 `标题 · 类名 · PID · 宽x高 @(x,y)`，按标题或类名过滤 | 退出 `3` = 没有匹配窗口：`page` 看页面，或 `start` 冷启动 |
 
 ## 验证一次改动（标准剧本）
 
