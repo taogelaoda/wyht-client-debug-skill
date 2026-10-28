@@ -71,6 +71,8 @@ irm https://gitee.com/zhu-gangtao/wyht-client-debug-skill/raw/main/get.ps1 | iex
 
 2.x 留下的 `%LOCALAPPDATA%\wyht\bin\wyht-skill.cmd` 指向 3.0 已删掉的 `bin\wyht-skill.ps1`，直接跑 `wyht-skill install` 会先坏一次。3.0 的 bootstrap 会先对已有克隆 `git pull --ff-only`，再按内容差异重写这个 `.cmd`，所以重跑即自愈。
 
+若第一次升级后 `wyht-skill` 报找不到 `bin\wyht-skill.ps1`（raw 的 CDN 缓存仍指向 2.x 引导器），**再跑一次同一条一键安装命令即可自愈**：3.0 的引导器会先 `git pull --ff-only`，再按内容差异把 `%LOCALAPPDATA%\wyht\bin\wyht-skill.cmd` 重写成指向 `bin\wyht-skill.mjs`（标准布局下用的是 `%~dp0` 相对路径，中文用户名不受影响）。
+
 升级后新开终端跑 `wyht-skill --help`，应能列出 `install` `clients` `init` `check` `doctor` `start` `stop` 7 个子命令。
 
 ## 用法
