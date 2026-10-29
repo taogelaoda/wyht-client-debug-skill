@@ -1,7 +1,7 @@
 ---
 name: wyht-client-debug
 description: 当需要在真实 CEF 医生客户端里验证前端改动、抓取请求报文、或重启客户端加载本地代码时使用；按版本分流（≥3.0 为 C++ 壳、<3.0 为 C# 壳，冷/热启动只有 ≥3.1.0 才有），也适用于宿主内页打不开 DevTools 需要走日志采集、9222 端口只见 about:blank、热启动改不动页面、以及准备改 config.db / hosts / 杀进程绕过客户端限制的场景。
-version: "3.1.1"
+version: "3.1.2"
 license: MIT
 metadata:
   hermes:
@@ -60,12 +60,39 @@ wyht-skill init                         # 项目级：在项目根运行，交�
 2. **造前置状态**：用 `eval` 把缺陷条件做出来。例：验证"登录后旧气泡残留"，先造一个残留气泡
    `wyht-skill eval "initObj.openBubble('http://localhost:8080/yl-client-web/bubble?isfirst=1&message=请重新登录','客户端系统-消息提醒','0')"`
    （注意：`initObj` 上**没有** `openLegacyBubble`，SDK 的该方法映射到 `initObj.openBubble`；方法名不确定就先 `eval "Object.keys(initObj)"`。）
-3. **触发**：登录/切换账号这类"改变状态"的动作，要么点真实 UI，要么用 `eval` 改 `location`
-   `wyht-skill eval "location.href='http://localhost:8080/yl-client-web/login?hisUserId=zgt&logCollect=1&key=2016'"`
-   （本机构建登录需要后端测试 `key`；`start` 拼的 URL 不带它。）
+3. **触发**：优先点真实 UI；脚本触发要**分清改哪个窗**——
+   - **改当前窗的页面**（登录页、主窗自身路由）：用宿主写法
+     `wyht-skill eval "initObj.reloadChromium('http://localhost:8080/yl-client-web/login?hisUserId=zgt&logCollect=1&key=2016')"`
+     （本机构建登录需要后端测试 `key`；`start` 拼的 URL 不带它。）
+   - **要开/切子窗**（气泡、独立窗）：**绝不能**用 `location.href` 或 `Page.navigate` —— 那只改"当前选中的那个窗"，会把**主窗**导航成子窗内容、尺寸被挤压。正确做法：
+     `wyht-skill eval "initObj.openForm({ formName: '客户端系统-消息提醒', param: '<子窗 URL>', width: 380, height: 620 })"`
+     （`openForm` 同名已存在时是**激活**而非重建；`width/height/locationX` 等参数**从源码里抄**该 `formName` 的调用点——`grep -rn "openForm" src/`，别自己拍数字。）
 4. **取证**：`page` 看页面（残留的 `bubble?isfirst=1` 应消失、变成 `bubble`），`eval` 读状态
    `wyht-skill eval "initObj.getAllFormNames()"`（同名窗体应只有一个）、
    `eval "document.body.innerText"`（气泡应为空）。最后 `stop` 收尾并确认 9222 释放。
+
+### 剧本 E：子窗口路由
+
+子窗（气泡 / 独立窗）的页面**不在主窗里**，用主窗导航测它一定是错的。
+
+```powershell
+wyht-skill page                                  # 记下现有 target 与各自 URL
+# ① 优先：点页面里真实入口（它自己会带正确的 openForm 参数）
+# ② 脚本复现：从源码抄尺寸，调用宿主方法开子窗
+wyht-skill eval "initObj.openForm({ formName: '客户端系统-消息提醒', param: 'http://localhost:8080/yl-client-web/bubble?isfirst=1&message=测试', width: 380, height: 620 })"
+wyht-skill page                                  # 应多出/切换到该子窗 target，URL 是子窗路由
+wyht-skill windows 消息提醒                      # 原生窗口矩形；注意尺寸以页面自己为准（见下）
+wyht-skill eval --page "bubble?isfirst" "JSON.stringify({w:window.innerWidth,h:window.innerHeight})"   # 子窗视口
+wyht-skill eval --page "bubble?isfirst" "document.body.innerText"                                     # 子窗内容取证
+wyht-skill eval "initObj.closeCurrent(['客户端系统-消息提醒'])"   # 只关这个子窗
+wyht-skill stop
+```
+
+三条实测结论（本机 3.1.1）：
+
+- **尺寸由页面自己决定**：`openForm` 的 `width/height` 只是**初始值**，子窗页面 mount 后会用自己的 `initialWindow` 覆盖（实测传 380×620，气泡页最终是 150×70）。验证"被挤压"时，期望值要取该页面源码里的 `initialWindow` 参数，别拿 `openForm` 传的值当基准。
+- **判断"是不是开在了主窗"**：`page` 里主窗 target 的 URL **没变**、且多出子窗 target —— 两者同时成立才算开对。
+- **关子窗**用 `initObj.closeCurrent(['<formName>'])`；**不要**用 `initObj.closeForm('<formName>')`（那个会连主窗一起关，见常见错误）。
 
 > 取证要写"改动前会怎样"。比如上面这条：改动前气泡正文是「请重新登录」，改动后为空——只报"现在是空的"不算验证。
 
@@ -145,6 +172,7 @@ wyht-skill check    # 只读 config.db（node:sqlite），不改任何东西
 | 想用 `openNewBall` 再开一个球做实验 | 悬浮球**全客户端唯一**：宿主日志 `openNewBall: 悬浮球已存在，先关闭旧球再按新参数重建`——真球会被替换掉。要验证球状态就改现成的球 |
 | 把 `Draggable` 当窗体属性排查 | 它是**持久化全局设置**（落 `config.db` 的 `WebSetting.Draggable`），最后写入者生效、与窗体无关；手工改过要恢复，否则污染这台机器 |
 | 为了验证缩放去调 `setZoomLevel` | 本机构建实测：传 `1` 或 `0` 都会**直接退出整个客户端**（3/3 复现），只做 `typeof` 检查，不要执行 |
+| 用 `location.href` / `Page.navigate` 测子窗路由 | 这两者只改**当前选中的那个 window**：主窗被导航成子窗内容后尺寸被挤压，看起来像"子窗嵌进主窗"。子窗必须用 `initObj.openForm({formName, param, width, height, …})` 或点页面真实入口；换当前窗路由用 `initObj.reloadChromium(url)` |
 | 直接调 `initObj.openLegacyBubble(...)` | 3.1.1 的宿主里**没有这个方法**（`TypeError: not a function`）：SDK 的 `openLegacyBubble` 是封装，落到 `initObj.openBubble(url, formName, site)`。方法名不确定时先 `wyht-skill eval "Object.keys(initObj)"` 枚举，别按 SDK 函数名猜宿主方法名 |
 | 以为 `windows` 能按窗体名找到气泡窗 | 原生窗口标题是**窗口标题**（如 `客户端系统-机器人` / `FloatBall`），气泡窗常不可见或标题为空。找气泡用 `page`，找球/主窗用 `windows 机器人` |
 | 把 `getLocalPrinters()` 当数组 | 实际返回 `{code,datas:[{printName}],message,success}` 的 JSON 字符串，名字在 `datas[].printName` |

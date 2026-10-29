@@ -1,5 +1,12 @@
 # 变更记录
 
+## 3.1.2
+
+- 修正「验证一次改动」第 3 步：触发拆成「改当前窗」（`initObj.reloadChromium`）与「开子窗」（`initObj.openForm`），并写明 `location.href` / `Page.navigate` 只会改**当前选中的窗**
+- 新增剧本 E「子窗口路由」：点真实入口或 `openForm` 复现 → `page` 看 target → `windows` 核对原生尺寸 → 取证 → `stop`
+- 常见错误新增一条：用主窗导航测子窗路由 → 主窗被导航、尺寸被挤压
+- `cdp-recipes.md` 的临时导航段补 `Page.navigate` 的作用域与子窗正确入口
+
 ## 3.1.1
 
 - 新增中文《使用手册》（文档站 `/wyht/debug-tools/client-debug-skill-usage`）：命令参考、四个验证剧本（气泡 / 球 / 登录态 / 报文）、排错表、已知限制

@@ -33,6 +33,9 @@ ws.onmessage = e => {
 
 ## 3. 临时导航并还原
 
+> **`Page.navigate` 只作用于你连上的那个 page target。** 要测子窗（气泡/独立窗）路由时，先确认 target 是子窗那个；在主窗 target 上导航过去，只是把主窗换成子窗内容（尺寸被挤压），并不是打开子窗。子窗请用 `initObj.openForm({formName, param, width, height})`，当前窗换路由用 `initObj.reloadChromium(url)`。
+
+
 ```jsonc
 {"id":3,"method":"Page.getNavigationHistory"}      // 先存 currentIndex / entries[i].id / url
 {"id":4,"method":"Page.navigate","params":{"url":"<新 URL>"}}
