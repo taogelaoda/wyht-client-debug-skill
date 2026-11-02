@@ -173,9 +173,14 @@ export async function cmdInstall(args, env) {
     }
   }
   // .cmd 必须纯 ASCII：cmd.exe 按 OEM 解码，中文会被当成命令执行
+  // 优先用系统 Node：球应用等工具链会用 nvm 把 PATH 里的 node 锁在 14，
+  // 而本 CLI 依赖 node:sqlite（>=22）。系统 Node 不存在时才回落到 PATH。
   const shimText = '@echo off\r\n' +
-    'rem wyht-skill entry: forwards args to the Node CLI inside the skill repo\r\n' +
-    'node "' + nodeTarget + '" %*\r\n';
+    'rem wyht-skill entry: prefers the system Node (>=22) over an nvm-pinned old one\r\n' +
+    'setlocal\r\n' +
+    'set "WNODE=node"\r\n' +
+    'if exist "%ProgramFiles%\\nodejs\\node.exe" set "WNODE=%ProgramFiles%\\nodejs\\node.exe"\r\n' +
+    '"%WNODE%" "' + nodeTarget + '" %*\r\n';
   fs.mkdirSync(shimDir, { recursive: true });
   if (!fs.existsSync(shim) || fs.readFileSync(shim, 'utf8') !== shimText) {
     fs.writeFileSync(shim, shimText, 'ascii');

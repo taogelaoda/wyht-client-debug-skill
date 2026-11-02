@@ -1,7 +1,7 @@
 ---
 name: wyht-client-debug
 description: 当需要在真实 CEF 医生客户端里验证前端改动、抓取请求报文、或重启客户端加载本地代码时使用；按版本分流（≥3.0 为 C++ 壳、<3.0 为 C# 壳，冷/热启动只有 ≥3.1.0 才有），也适用于宿主内页打不开 DevTools 需要走日志采集、9222 端口只见 about:blank、热启动改不动页面、以及准备改 config.db / hosts / 杀进程绕过客户端限制的场景。
-version: "3.1.2"
+version: "3.1.3"
 license: MIT
 metadata:
   hermes:
@@ -97,6 +97,95 @@ wyht-skill stop
 > 取证要写"改动前会怎样"。比如上面这条：改动前气泡正文是「请重新登录」，改动后为空——只报"现在是空的"不算验证。
 
 选项：`start` 的 `--no-log` 去掉 `?logCollect=1`；`--timeout <秒>` 改等待（`start` 默认 30、`stop` 默认 15）；`--client <名>` 临时换包（默认用项目配置里的那个）。退出码 `0` 成功，非 `0` 见上表；`3` 还可能是「未初始化 / 客户端未登记」，按输出里的下一步处理。
+
+## 业务应用验收（以 `mutual-recognition-ball` 为例）
+
+主窗里"点开一个应用"和"验收那个应用"是两件事。这类被壳承载的 SPA 有自己的 dev server、自己的后端前缀、自己的 iframe 身份；按主窗那套流程验收，一定验空。
+
+### 三条结构性事实
+
+| 事实 | 证据 |
+|---|---|
+| 球应用是独立 SPA：dev server **8081**、base `/mutual-recognition-ball/`；壳（8080）反向代理它 → iframe 同源加载 | 球 `vue.config.js:6,10-15`；`yl-client-web/vue.config.js:12-16` |
+| iframe 的 `id` 就是 `appCode`；壳内部也用 `document.getElementById(appCode)` 找子帧 | `yl-client-web/src/views/home/components/HomeApplicationViewport.vue:4-10`、`src/client-sdk/newClientSdk.js:983,1026` |
+| **不能**顶层直接开 `http://localhost:8081/mutual-recognition-ball/`：`isClient = true` 而宿主没注入 `initObj` → ReferenceError | 球 `config/default-anhui-dev.js:3`、`src/main.js` |
+
+⇒ 红线条目：验收球应用**必须**走"8080 + 壳 + 菜单进 iframe"。顶层开 8081 验的是"桩下的应用"，不算验收。
+
+### 后端前缀：两套，两个落点
+
+| 谁在用 | 来源 | 本机现值（实测） |
+|---|---|---|
+| 壳（C++）与 `yl-client-web` | `config.db` → `iu_Hrball_exe.ServerUrl` | `http://172.17.28.67:81/iuPublicClientServer` |
+| 球应用 | `window.config.VUE_APP_HISTORY_API` ← `config/default-anhui-dev.js` 的 `historyReminder` | `http://172.17.28.67:81/iuWorkStation` |
+
+口诀：**改球应用的后端地址，改 `config/default-*.js`，不要改 `config.db`。** 球应用根本不读 `ServerUrl`（`src/utils/Service.js:8-9,45-47`）。
+
+`ServerUrl` 判定规则（三类）：
+
+1. host 为 `127.0.0.1` / `localhost` → 指向本机后端：先确认 `:8077/iuPublicClientServer` 活着，再谈验不验。
+2. host 为内网 IP（如 `172.17.28.67:81`）→ 指向共享测试前置机：**可以验收，不要往里批量造数**（见下）。
+3. 值里含 `iuWorkStation` → 壳会在内存里静默改写成 `iuPublicClientServer`（同 host:port），别按字面理解。
+
+两条硬规则：
+
+- 改 `config.db` 后必须 `stop` → `start`：替换只发生在壳内存（`client/iu.wyht.cpp/iu.Hrball/cefclient_win.cc:925-927`），不重启不生效、也不回写库。
+- JS 侧读到的是**未替换的原始值**：前后进程看到的可能不是同一个 URL，排错时别拿一处结论套另一处。
+- 球应用的 `public/default.js` 是 `predev` 从 `config/default-*.js` 拷来的（球 `package.json:8`）→ 改配置后要重启该 dev server。
+
+### 验收前自检三元组
+
+回答"这次到底要不要起壳"：三条缺一条就别声称验收过。
+
+```powershell
+wyht-skill doctor   # 壳进程 / 9222 / webUrl 端口
+wyht-skill check    # 0 直连 / 2 安装态 / 3 前置机 / 4 未初始化
+wyht-skill page     # 主窗 URL 是否 = 配置 webUrl，且已进目标业务页
+```
+
+### 造数据：接口优先，禁止默认写库
+
+后端仓库即 `backend/`（`iu-client-system`，路径挂 `/iuWorkStation` 根下，注意 **`sourceHospitalId` 走请求头**，不是 query）：
+
+| 用途 | 接口 | 必填 |
+|---|---|---|
+| 查有没有可验数据 · 医生口径（首页列表，与页面请求同形） | `GET /web/getLocalHistoryExam` | query `loginName`、`hisUserId`、`page`、`size`、`searchStartTime`、`searchEndTime`；header `sourceHospitalId` |
+| 查有没有可验数据 · 患者口径 | `GET /web/getHistoryExam` | query `idCardNo`（要过后端 CitizenId 校验）；header `sourceHospitalId` |
+| 从云端拉预存数据写本地（首选造数） | `POST /pullPatient` | body `accessNumber`、`hospitalId`、`sourceHospitalId` |
+| 刷卡上报（造数 + 推送互认球） | `POST /swipingIdCardNo?hospitalId=` | body `patientName`、`hisUserId`、`idCardNo`、`sourceHospitalId` |
+| 删检查数据（清理） | `POST /deletePatient` | body `sourceHospitalId`、`idCardNoEncipher`（需后端加密值，脚本算不出来） |
+
+- 共享测试环境：只允许用 `fixtures.local.json` 里的**专用测试患者**，验完按 `cleanup` 清理；没有对应写接口时才申请写库（主数据源是 ShardingSphere `sharding`，直连需分片规则与凭据，**不要默认走**）。
+- 造不出数据 ≠ 验收通过：按阻塞上报，写清探测结果、试过的接口与能做的无数据断言。
+- 响应形状是 `{code, datas:{content:[], totalElements}}`（键是 `datas` 不是 `data`）：判"有没有数据"看 `totalElements`，别看 HTTP 200 —— 空列表也是 200。
+- 探测/造数脚本要求 **Node ≥18**（其余球应用工具链是 Node 14）：本机 `node -v` 是 14 时先 `nvm use 24`。
+
+### 剧本 F：球应用页面验收
+
+```powershell
+# 0. 两个 dev server 就绪：yl-client-web 8080、mutual-recognition-ball 8081（predev 会重生成 public/default.js）
+wyht-skill doctor; wyht-skill check
+wyht-skill start
+wyht-skill eval "initObj.reloadChromium('http://localhost:8080/yl-client-web/login?hisUserId=<hisUserId>&key=<后端测试key>')"
+
+# 1. 造数（脚本在项目 scripts/e2e/ball/；先 probe，再 seed，退出码 3 = 验收不成立）
+#    先把 fixtures.example.json 复制成 fixtures.local.json 填专用测试患者（已 gitignore）
+node scripts/e2e/ball/seed.mjs probe           # 医生口径 + 患者口径各报一次"有没有数据"
+node scripts/e2e/ball/seed.mjs seed            # 没数据才造；--swipe 走刷卡上报，--dry-run 只看请求
+
+# 2. 找 iframe（球应用不是独立 target，是主窗里的一个 iframe）
+wyht-skill eval "[...document.querySelectorAll('iframe')].map(f=>({id:f.id,src:f.src}))"
+
+# 3. 进 iframe 取证（同源，contentWindow 可直接访问）
+wyht-skill eval "document.getElementById('<appCode>').contentWindow.document.body.innerText"
+wyht-skill eval "document.getElementById('<appCode>').contentWindow.location.href"
+
+# 4. 收尾
+node scripts/e2e/ball/seed.mjs cleanup         # 需 fixtures 提供 idCardNoEncipher；否则按说明接受残留
+wyht-skill stop
+```
+
+验收必须自证三件事，缺一条算没验：① `page` 里主窗 URL；② 造数用了哪个接口 / 脚本路径；③ iframe 内页面**真实读到的字段值**（不是"页面打开了"）。
 
 ## 版本背景（先确认版本，再套规则）
 

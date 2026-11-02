@@ -1,5 +1,13 @@
 # 变更记录
 
+## 3.1.3
+
+- 新增「业务应用验收（以 `mutual-recognition-ball` 为例）」：壳承载 SPA 的三条结构性事实、顶层开 8081 的红线、iframe 取证的定位方式（`id = appCode`）
+- 新增后端前缀规则表：`config.db.ServerUrl`（壳与 `yl-client-web`）与 `VUE_APP_HISTORY_API`（球应用）两个落点，附 `ServerUrl` 三类判定与两条硬规则（改库必须重启、JS 侧读原始值）
+- 新增验收前自检三元组（`doctor` / `check` / `page`）与「造数接口优先」清单（`getLocalHistoryExam` 医生口径 / `getHistoryExam` 患者口径 / `pullPatient` / `swipingIdCardNo` / `deletePatient`，`sourceHospitalId` 走请求头，响应键为 `datas`）
+- 新增剧本 F：球应用页面验收全流程（造数脚本 → 定位 iframe → 进 iframe 取证 → 清理）
+- 配套脚本落在项目仓库 `scripts/e2e/ball/seed.mjs`（probe / seed / cleanup / --self-check，退出码 3 = 造数后仍无数据）
+
 ## 3.1.2
 
 - 修正「验证一次改动」第 3 步：触发拆成「改当前窗」（`initObj.reloadChromium`）与「开子窗」（`initObj.openForm`），并写明 `location.href` / `Page.navigate` 只会改**当前选中的窗**
