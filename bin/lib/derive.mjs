@@ -21,11 +21,9 @@ export function versionSemantics(version) {
   const minor = parts[1] || 0;
   const shell = major >= 3 ? 'C++ 原生 CEF' : 'C# 壳（CefSharp 系）';
   const hotStart = major >= 3 && minor >= 1;
-  return {
-    shell,
-    hotStart,
-    text: version + ' · ' + shell + ' · ' + (hotStart ? '冷/热启动可用' : '只有冷启动'),
-  };
+  // 2.x 实测（2.1.7.3）：单实例会把参数转给已运行实例，但页面不会重新加载——所以不算热启动
+  const tail = hotStart ? '冷/热启动可用' : (major < 3 ? '只有冷启动（单实例会转发参数，页面不重载）' : '只有冷启动');
+  return { shell, hotStart, text: version + ' · ' + shell + ' · ' + tail };
 }
 
 export function detectExe(dir) {
