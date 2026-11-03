@@ -1,4 +1,7 @@
 // 移植自原 scripts/check_env.py：只读判定，不做任何写操作。
+// 3.x 的配置在 SQLite config.db；2.x（C# 壳）在 <exe>.config 的 appSettings。两代都要能读。
+import fs from 'fs';
+import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 
 export const KEYS = ['IsFirstRun', 'ServerUrl', 'HospitalId', 'ClientType', 'HospitalUserName'];
@@ -49,6 +52,35 @@ function isPrivateHost(host) {
     (a === 169 && b === 254) ||
     (a === 198 && (b === 18 || b === 19))
   );
+}
+
+/** 2.x（C# 壳）：<exe>.config 的 appSettings 就是壳配置，键名与 3.x 相同 */
+export function readXmlShellConfig(xmlPath) {
+  const text = fs.readFileSync(xmlPath, 'utf8');
+  const map = {};
+  const re = /<add\s+key="([^"]+)"\s+value="([^"]*)"\s*\/>/g;
+  let m;
+  while ((m = re.exec(text))) {
+    if (KEYS.indexOf(m[1]) !== -1) map[m[1]] = m[2];
+  }
+  return map;
+}
+
+/**
+ * 选出这台客户端的配置源：config.db（3.x）优先，否则 <exe>.config（2.x）。
+ * @param {{dir:string, exe:string}} client 已登记的客户端
+ * @returns {{kind:'sqlite'|'xml', path:string}|null} null = 两代都没有，说明目录不对
+ */
+export function detectShellConfig(client) {
+  const db = path.join(client.dir, 'config.db');
+  if (fs.existsSync(db)) return { kind: 'sqlite', path: db };
+  const xml = path.join(client.dir, client.exe + '.config');
+  if (fs.existsSync(xml)) return { kind: 'xml', path: xml };
+  return null;
+}
+
+export function readShellConfigFile(source) {
+  return source.kind === 'xml' ? readXmlShellConfig(source.path) : readShellConfig(source.path);
 }
 
 export function classify(cfg) {

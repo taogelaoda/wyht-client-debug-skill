@@ -1,7 +1,7 @@
 ---
 name: wyht-client-debug
 description: 当需要在真实 CEF 医生客户端里验证前端改动、抓取请求报文、或重启客户端加载本地代码时使用；按版本分流（≥3.0 为 C++ 壳、<3.0 为 C# 壳，冷/热启动只有 ≥3.1.0 才有），也适用于宿主内页打不开 DevTools 需要走日志采集、9222 端口只见 about:blank、热启动改不动页面、以及准备改 config.db / hosts / 杀进程绕过客户端限制的场景。
-version: "3.2.0"
+version: "3.3.0"
 license: MIT
 metadata:
   hermes:
@@ -43,9 +43,9 @@ wyht-skill init                         # 项目级：在项目根运行，交�
 
 | 命令 | 何时用 | 产出 | 失败怎么办 |
 |---|---|---|---|
-| `wyht-skill check` | 动手前先跑一次，决定能不能直连 | 判定 + 版本（壳形态与启动语义）+ `ServerUrl` / `HospitalId` + 退出码 `0` 直连 / `2` 安装态 / `3` 前置机 / `4` 读取失败 | `4` = `config.db` 读不到：`clients list` 核对目录，换包后重新 `clients add`；`2` 就走去装机向导，别手改 `IsFirstRun`；`3` 也可能是未初始化 / 客户端未登记，按提示的下一步处理 |
+| `wyht-skill check` | 动手前先跑一次，决定能不能直连 | 判定 + **配置源（3.x 的 `config.db` / 2.x 的 `<exe>.config`）** + 版本（壳形态与启动语义）+ `ServerUrl` / `HospitalId` + 退出码 `0` 直连 / `2` 安装态 / `3` 前置机 / `4` 读取失败 | `4` = `config.db` 读不到：`clients list` 核对目录，换包后重新 `clients add`；`2` 就走去装机向导，别手改 `IsFirstRun`；`3` 也可能是未初始化 / 客户端未登记，按提示的下一步处理 |
 | `wyht-skill doctor` | 客户端起不来、9222 看不到目标页、怀疑仓库落后 | 版本（壳形态与启动语义）、进程、`9222`/`8080`/`9321` 端口、本地前端 HTTP 状态、9222 页面清单、仓库落后几个提交、Node 版本 | 端口/进程在但页面不对：先 `stop` 再 `start`；仓库落后：`install` 升级；Node 不足：先装 Node ≥ 24 |
-| `wyht-skill start` | 要让客户端加载本地前端 | 拉起的 PID、命中的本地前端页 URL（默认带 `?logCollect=1`，`--query` 追加的额外参数原样带上），并写 `%LOCALAPPDATA%\wyht\state.json` | 退出 `3` = 前置条件不满足（exe 不在、9222 已被占、dev server 非 200，都会说明原因）；`1` = 超时内没等到本地页，进程已尝试回收，看客户端 `logs\`、再 `doctor` |
+| `wyht-skill start` | 要让客户端加载本地前端（**仅 ≥3.0**；2.x C# 壳只把壳拉起来，不加载本地前端） | 拉起的 PID、命中的本地前端页 URL（默认带 `?logCollect=1`，`--query` 追加的额外参数原样带上），并写 `%LOCALAPPDATA%\wyht\state.json` | 退出 `3` = 前置条件不满足（exe 不在、9222 已被占、dev server 非 200，都会说明原因）；`1` = 超时内没等到本地页，进程已尝试回收，看客户端 `logs\`、再 `doctor` |
 | `wyht-skill stop` | 改完前端要重启、或收工 | 调 `initObj.exitApplication()` 并验收（进程消失 + 9222 释放） | `3` = 9222 上没有可用业务页：按本文件红线人工处理，不要 `taskkill`；`1` = 验收没在超时内通过，重跑 `doctor` 看进程与端口 |
 
 | `wyht-skill page [过滤词]` | 要看 9222 上到底有哪些页面、哪个是主窗/气泡 | 页面目标清单（type + url），可按 URL 子串过滤 | 退出 `3` = 列不到页面：`start` 冷启动，或 `doctor` 看端口与进程 |
@@ -210,7 +210,20 @@ wyht-skill stop
 | ≥ 3.1.0 | C++ 原生 CEF | 单实例：第二次启动只把参数转发给已运行实例后退出（**冷/热启动**这一对概念从 3.1.0 才开始存在） |
 
 - 版本从包目录名取（`WYHT--3.1.1--x64--…` → `3.1.1`），`wyht-skill check` / `doctor` 会直接打印判定后的壳形态与启动语义。
-- **本技能所有实测结论来自 3.1.1（C++ 原生 CEF）**。3.0.x 同为 C++ 壳，排障手法基本适用，但缺单实例/热启动这一层；**< 3.0.0 的 C# 壳未做过基线测试**，其中的 CefSharp 相关手册（Cache、User Data 等）在那代壳上是可疑依据而非定论——遇到 < 3.0.0 先确认版本再决定是否照抄本文。
+- **本技能所有实测结论来自 3.1.1（C++ 原生 CEF）**。3.0.x 同为 C++ 壳，排障手法基本适用，但缺单实例/热启动这一层。
+
+### 2.x（C# 壳 / CefSharp）实测基线（2026-11 在 2.1.7.3 上跑过）
+
+| 项 | 结论 | 证据 |
+|---|---|---|
+| 配置 | 在 `iu.Hrball.exe.config` 的 `appSettings`（XML），**没有 `config.db`**；键名与 3.x 相同（`ServerUrl`/`HospitalId`/`IsFirstRun`/`ClientVersion`） | `check` 自动识别：XML（2.x）/ SQLite（3.x），只读 |
+| 远程调试 | **没有**：CefSharp 未开 `RemoteDebuggingPort`，实测跑起来 9222 无监听、`/json/list` 空 | `page` 列不到页面；程序集里也没有 `--url` / `remote-debugging-port` 字符串 |
+| `--url` | 支持但**不可用**：日志里 `Filtered parameters` 把所有 `/` 去掉（`http:localhost:8080yl-client-weblogin`），落到的是"打开某页"的意图而非 URL | `logs\<日期>Info.log` 的 `Program.Main` 三行 |
+| 单实例 | 有：第二次启动把参数转给已运行实例（`Send message` → `FrmMain.DefWndProc`），但页面不会重新加载 | 同上 |
+| 取证通道 | `wyht-skill windows`（WinForms 窗口，类名 `WindowsForms10.*`）+ `logs\<日期>Info.log`；本地页是 `file:///D:\<包>\xxx.html` | 实测 `windows 讯飞` 命中 `气泡-讯飞晓影 200x80`、`球-讯飞晓影 26x31` |
+| 与 3.x 共存 | **不行**：两代 `iu.wyht.Server.exe` / `iu.czht.Server.exe` 抢同一个本地 HTTP 端口，后起的报 `HTTP监听器异常：另一个程序正在使用此文件` | 2.x 今日 Error 日志 |
+
+⇒ 对 2.x 的期望要显式降级：`check` / `windows` / 日志可用；`page` / `eval` / `stop`（依赖 CDP）**不可用**；`start` 只保证把壳拉起来并说明限制。
 - 版本 < 3.1.0 时：不存在热启动，也没有"第二次启动转发参数后退出"的现象；每次启动都要按冷启动准备。
 
 ## 何时使用

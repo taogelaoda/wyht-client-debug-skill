@@ -27,6 +27,10 @@ export default [
       assert.ok(launch.indexOf('Start-Process') === 0);
       assert.ok(launch.indexOf('-PassThru') !== -1);
       assert.ok(launch.indexOf('--url=http://localhost:8080/yl-client-web/login') !== -1);
+      // 2.x C# 壳不支持 --url：不能退化成 --url=null
+      const legacy = startProcessCommand('C:\\wyht\\iu.Hrball.exe', null, 'C:\\wyht');
+      assert.ok(legacy.indexOf('--url') === -1, legacy);
+      assert.ok(legacy.indexOf('-WorkingDirectory') !== -1);
     },
   },
   {

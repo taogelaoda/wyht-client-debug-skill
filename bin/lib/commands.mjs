@@ -10,7 +10,7 @@ import {
 } from './config.mjs';
 import { listeningPorts, portListening, processesByName, httpStatus, sleep } from './probe.mjs';
 import { listPages, pickPage, evaluate, waitForPage } from './cdp.mjs';
-import { readShellConfig, classify, checkExitCode } from './shellconfig.mjs';
+import { detectShellConfig, readShellConfigFile, classify, checkExitCode } from './shellconfig.mjs';
 import {
   buildDoctorReport, buildStartUrl, startPreflight, stopVerdict, matchLocalPage,
   parseLoginQuery, renderLoginUiHtml, isExpectedCdpDrop,
@@ -311,17 +311,18 @@ export async function remoteBehind(repo) {
 }
 
 export async function cmdCheck(args, client, env) {
-  const dbPath = path.join(client.dir, 'config.db');
-  if (!fs.existsSync(dbPath)) {
+  // 3.x 读 config.db；2.x（C# 壳）读 <exe>.config —— 两代都只读，不写
+  const source = detectShellConfig(client);
+  if (!source) {
     env.out('check · 读取失败', [
-      '  找不到 ' + dbPath,
+      '  找不到 ' + path.join(client.dir, 'config.db') + ' 或 ' + path.join(client.dir, client.exe + '.config'),
       '  下一步：wyht-skill clients list 确认登记的目录；换包后重新 clients add',
     ]);
     return 4;
   }
   let cfg;
   try {
-    cfg = readShellConfig(dbPath);
+    cfg = readShellConfigFile(source);
   } catch (err) {
     env.out('check · 读取失败', [
       '  ' + (err && err.message ? err.message : err),
@@ -333,6 +334,7 @@ export async function cmdCheck(args, client, env) {
   const version = deriveClient(client.dir).version;
   env.out('check · ' + verdict.env, [
     '  客户端 ' + client.dir,
+    '  配置源 ' + (source.kind === 'xml' ? 'XML（<exe>.config，2.x C# 壳）' : 'SQLite（config.db，3.x）') + ' · ' + source.path,
     '  版本   ' + (version ? versionSemantics(version).text : '未识别（目录名里没有 x.y.z）'),
     '  ServerUrl ' + (cfg.ServerUrl || '<空>') + '  HospitalId ' + (cfg.HospitalId || '<空>'),
     '  判定   ' + verdict.reason,
@@ -374,8 +376,9 @@ function psQuote(value) {
 }
 
 export function startProcessCommand(exePath, url, cwd) {
-  return 'Start-Process -FilePath ' + psQuote(exePath) +
-    ' -ArgumentList ' + psQuote('--url=' + url) +
+  // url 为空（2.x C# 壳不支持 --url）时不传参数，避免变成 --url=null
+  const args = url ? ' -ArgumentList ' + psQuote('--url=' + url) : '';
+  return 'Start-Process -FilePath ' + psQuote(exePath) + args +
     ' -WorkingDirectory ' + psQuote(cwd) +
     ' -PassThru | Select-Object -ExpandProperty Id';
 }
@@ -412,6 +415,32 @@ export async function cmdStart(args, project, client, env) {
       '  下一步：wyht-skill clients list 确认登记目录；换包后重新 wyht-skill clients add "<目录>"',
     ]);
     return 3;
+  }
+  const clientVersion = deriveClient(client.dir).version;
+  const major = clientVersion ? parseInt(clientVersion.split('.')[0], 10) : 0;
+  if (major < 3) {
+    // 2.x（C# 壳）实测：`--url` 会被过滤掉斜杠（日志 "Filtered parameters"），无法加载本地前端；
+    // 且 CefSharp 没开远程调试（9222 无监听）。所以只保证"把壳拉起来"，并把限制说清楚。
+    const running2 = await processesByName([client.exe]);
+    if (running2 && running2.length) {
+      env.out('start · 已在运行（2.x C# 壳）', [
+        '  进程 ' + running2.map((p) => p.pid).join('、'),
+        '  注意 2.x 是单实例：再启动只会把参数转给已运行实例，页面不会重新加载',
+        '  下一步：要换页面先关掉它；2.x 的取证靠 logs\\<日期>Info.log 与 wyht-skill windows',
+      ]);
+      return 0;
+    }
+    const launched2 = await launchClient(exePath, null, client.dir);
+    if (!launched2.ok) {
+      env.out('start · 启动失败', ['  ' + launched2.text, '  下一步：以管理员身份打开终端重试（该客户端清单要求提升，会弹 UAC）']);
+      return 1;
+    }
+    env.out('start · 成功（2.x C# 壳）', [
+      '  PID  ' + launched2.pid,
+      '  限制 该代不支持 --url（参数里的 / 会被过滤），只能加载 ServerUrl 指向的后端页面；也没有远程调试端口',
+      '  下一步：要验本地前端请换 3.x 包；2.x 的取证靠 logs\\<日期>Info.log 与 wyht-skill windows',
+    ]);
+    return 0;
   }
   const ports = await listeningPorts();
   if (ports === null) {
@@ -583,6 +612,7 @@ export async function cmdPage(args, env) {
     env.out('page · 没有匹配的页面', [
       filter ? '  过滤词：' + filter : '  9222 上列不到任何页面目标',
       '  下一步：wyht-skill start 冷启动；若已启动，wyht-skill doctor 看端口与进程',
+      '  提示：<3.0 的 C# 壳没有远程调试端口（实测 9222 无监听），这类客户端只能靠 wyht-skill windows 与 logs\\<日期>Info.log',
     ]);
     return 3;
   }
