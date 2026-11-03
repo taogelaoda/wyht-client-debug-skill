@@ -6,10 +6,10 @@ import { fileURLToPath } from 'url';
 import { findProjectFile, readProject, readClients, resolveClient, clientsFilePath } from './lib/config.mjs';
 import {
   cmdInstall, cmdClients, cmdInit, cmdCheck, cmdDoctor, cmdStart, cmdStop,
-  cmdPage, cmdEval, cmdWindows,
+  cmdPage, cmdEval, cmdWindows, cmdUi,
 } from './lib/commands.mjs';
 
-export const COMMANDS = ['install', 'clients', 'init', 'check', 'doctor', 'start', 'stop', 'page', 'eval', 'windows'];
+export const COMMANDS = ['install', 'clients', 'init', 'check', 'doctor', 'start', 'stop', 'page', 'eval', 'windows', 'ui'];
 
 export const HELP = [
   'wyht-skill —— 皖医互通客户端调试技能',
@@ -29,15 +29,16 @@ export const HELP = [
   '  page [过滤词]          列出 9222 上的页面目标',
   '  eval <表达式>          在当前项目页面里执行 JS 并打印结果（表达式加引号）',
   '  windows [过滤词]       列出可见原生窗口（标题/类名/PID/位置）',
+  '  ui                     生成「登录 URL 编排器」静态页并打开（只生成命令，不执行）',
   '',
-  '选项：--client <名> --page <子串> --no-log --timeout <秒> --force --name <名> --exe <文件名> --use <名> --web-url <地址> --his-user-id <ID> --repo-url <地址> --ref <tag/分支> --help',
+  '选项：--client <名> --page <子串> --no-log --timeout <秒> --force --name <名> --exe <文件名> --use <名> --web-url <地址> --his-user-id <ID> --query <k=v&…> --login-query <k=v&…> --repo-url <地址> --ref <tag/分支> --help',
 ].join('\n');
 
 export function parseArgs(argv) {
   const args = {
     command: 'install', sub: null, rest: [], log: true, timeout: null,
     client: null, name: null, exe: null, use: null, ref: null, repoUrl: null, page: null, force: false, help: false,
-    webUrl: null, hisUserId: null,
+    webUrl: null, hisUserId: null, query: null, loginQuery: null,
   };
   const list = argv.slice();
   if (list.length && list[0].charAt(0) !== '-') {
@@ -64,6 +65,8 @@ export function parseArgs(argv) {
       if (next === undefined || String(next).indexOf('--') === 0) { args.hisUserId = ''; }
       else { args.hisUserId = list[++i]; }
     }
+    else if (token === '--query') args.query = list[++i];
+    else if (token === '--login-query') args.loginQuery = list[++i];
     else if (token === '--ref') args.ref = list[++i];
     else if (token === '--repo-url') args.repoUrl = list[++i];
     else if (token === '--page') args.page = list[++i];
@@ -124,6 +127,15 @@ async function main() {
   if (args.command === 'clients') return cmdClients(args, env);
   // windows 不依赖项目配置：它看的是会话里的原生窗口
   if (args.command === 'windows') return cmdWindows(args, env);
+  // ui 也只看项目配置（没有配置就生成一张空表单，不报错）
+  if (args.command === 'ui') {
+    const file = findProjectFile(projectRoot);
+    let uiProject = null;
+    if (file) {
+      try { uiProject = readProject(path.dirname(file)); } catch (err) { uiProject = null; }
+    }
+    return cmdUi(args, uiProject, env);
+  }
 
   const projectFile = findProjectFile(projectRoot);
   let project = null;

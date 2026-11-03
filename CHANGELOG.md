@@ -1,5 +1,15 @@
 # 变更记录
 
+## 3.2.0
+
+- 新增 `start --query "<k=v&…>"`：把登录 URL 的额外参数（如后端测试 `key`）从命令行传入，不再靠手拼 `reloadChromium`
+- 新增 `init --login-query "<k=v&…>"`：写入项目本地 `.wyht-skill.json` 的 `loginQuery`（交互式 `init` 也会问一次）；`doctor` 明文显示当前生效值
+- 新增 `wyht-skill ui`：生成「登录 URL 编排器」静态页并打开浏览器，表单实时产出 `start` 命令 / 登录 URL / `reloadChromium` 命令；纯前端，不起端口、不执行任何东西
+- 校验规则：`hisUserId` / `logCollect` 是专用键，`--query` 里出现同名直接报错
+- 去敏：文档与 CHANGELOG 里写死的后端测试 `key` 全部改为占位，改由 `--query` / `loginQuery` 注入
+- 修复 `stop` 误报：`initObj.exitApplication()` 会立即关闭浏览器，CDP 响应回不来（`CDP 连接失败`）属预期，现在继续走退出验收而不是直接判失败（实测：修前必报错，修后「已退出（进程消失、9222 已释放）」）
+- `start` 也认 `--his-user-id`（此前只在 `init` 生效，传了会被静默忽略）
+
 ## 3.1.3
 
 - 新增「业务应用验收（以 `mutual-recognition-ball` 为例）」：壳承载 SPA 的三条结构性事实、顶层开 8081 的红线、iframe 取证的定位方式（`id = appCode`）
@@ -24,7 +34,7 @@
 
 - 新增三个**验证**命令：`page [过滤词]`（9222 页面清单）、`eval "<表达式>"`（在项目页面里执行 JS 取证，优先非气泡页）、`windows [过滤词]`（原生窗口：标题/类名/PID/位置，看 CDP 看不到的悬浮球等）
 - `bin/lib/win.mjs`：用 `-EncodedCommand` 传 PowerShell 脚本枚举窗口，绕开命令行引号改写；输出强制 UTF-8，中文标题不乱码
-- SKILL.md 新增「验证一次改动（标准剧本）」：备 → 造前置状态 → 触发 → 取证，含本机登录需要 `key=2016` 的实测结论
+- SKILL.md 新增「验证一次改动（标准剧本）」：备 → 造前置状态 → 触发 → 取证，含本机登录需要后端测试 `key` 的实测结论（值不入库）
 - 常见错误补两条：`initObj` 没有 `openLegacyBubble`（SDK 映射到 `openBubble`，先 `Object.keys(initObj)` 枚举）；`windows` 按窗口标题/类名过滤，找气泡要用 `page`
 
 ## 3.0.0

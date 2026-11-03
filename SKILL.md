@@ -1,7 +1,7 @@
 ---
 name: wyht-client-debug
 description: 当需要在真实 CEF 医生客户端里验证前端改动、抓取请求报文、或重启客户端加载本地代码时使用；按版本分流（≥3.0 为 C++ 壳、<3.0 为 C# 壳，冷/热启动只有 ≥3.1.0 才有），也适用于宿主内页打不开 DevTools 需要走日志采集、9222 端口只见 about:blank、热启动改不动页面、以及准备改 config.db / hosts / 杀进程绕过客户端限制的场景。
-version: "3.1.3"
+version: "3.2.0"
 license: MIT
 metadata:
   hermes:
@@ -45,12 +45,26 @@ wyht-skill init                         # 项目级：在项目根运行，交�
 |---|---|---|---|
 | `wyht-skill check` | 动手前先跑一次，决定能不能直连 | 判定 + 版本（壳形态与启动语义）+ `ServerUrl` / `HospitalId` + 退出码 `0` 直连 / `2` 安装态 / `3` 前置机 / `4` 读取失败 | `4` = `config.db` 读不到：`clients list` 核对目录，换包后重新 `clients add`；`2` 就走去装机向导，别手改 `IsFirstRun`；`3` 也可能是未初始化 / 客户端未登记，按提示的下一步处理 |
 | `wyht-skill doctor` | 客户端起不来、9222 看不到目标页、怀疑仓库落后 | 版本（壳形态与启动语义）、进程、`9222`/`8080`/`9321` 端口、本地前端 HTTP 状态、9222 页面清单、仓库落后几个提交、Node 版本 | 端口/进程在但页面不对：先 `stop` 再 `start`；仓库落后：`install` 升级；Node 不足：先装 Node ≥ 24 |
-| `wyht-skill start` | 要让客户端加载本地前端 | 拉起的 PID、命中的本地前端页 URL（默认带 `?logCollect=1`），并写 `%LOCALAPPDATA%\wyht\state.json` | 退出 `3` = 前置条件不满足（exe 不在、9222 已被占、dev server 非 200，都会说明原因）；`1` = 超时内没等到本地页，进程已尝试回收，看客户端 `logs\`、再 `doctor` |
+| `wyht-skill start` | 要让客户端加载本地前端 | 拉起的 PID、命中的本地前端页 URL（默认带 `?logCollect=1`，`--query` 追加的额外参数原样带上），并写 `%LOCALAPPDATA%\wyht\state.json` | 退出 `3` = 前置条件不满足（exe 不在、9222 已被占、dev server 非 200，都会说明原因）；`1` = 超时内没等到本地页，进程已尝试回收，看客户端 `logs\`、再 `doctor` |
 | `wyht-skill stop` | 改完前端要重启、或收工 | 调 `initObj.exitApplication()` 并验收（进程消失 + 9222 释放） | `3` = 9222 上没有可用业务页：按本文件红线人工处理，不要 `taskkill`；`1` = 验收没在超时内通过，重跑 `doctor` 看进程与端口 |
 
 | `wyht-skill page [过滤词]` | 要看 9222 上到底有哪些页面、哪个是主窗/气泡 | 页面目标清单（type + url），可按 URL 子串过滤 | 退出 `3` = 列不到页面：`start` 冷启动，或 `doctor` 看端口与进程 |
 | `wyht-skill eval "<表达式>"` | 要读页面里的状态（`initObj`、Vuex、DOM、`location`）做取证；`--page <子串>` 精确指定页面（读气泡页必用，默认优先非气泡页） | 命中的页面 URL + 表达式结果；页面脚本抛异常时会打印异常首行 | `3` = 没页面 / `--page` 没命中；`1` = 表达式抛错或超时（单次 8s），先 `page` 确认页面对不对 |
 | `wyht-skill windows [过滤词]` | 要看 CDP 看不到的窗口（悬浮球等原生窗），确认窗体在不在、在哪。过滤词匹配**窗口标题或类名**（`机器人`、`FloatBall`），不是窗体名 | 可见窗口的 `标题 · 类名 · PID · 宽x高 @(x,y)`，按标题或类名过滤 | 退出 `3` = 没有匹配窗口：`page` 看页面，或 `start` 冷启动 |
+| `wyht-skill ui` | 不确定登录 URL 该带哪些参数时，用页面拼装 | 生成 `%TEMP%\wyht-skill-login-ui.html` 并用默认浏览器打开；表单实时产出 `start` 命令、登录 URL、`reloadChromium` 命令。**只生成、不执行** | 页面生成但浏览器没起来：手动双击该文件 |
+
+### 登录参数（`--query` / `loginQuery`）
+
+某些构建的登录必须要额外参数（后端加了测试 `key` 之类）。这些值**按环境不同**，所以不进文档、不写死：
+
+```powershell
+wyht-skill init --login-query "key=<测试key>"   # 写进 .wyht-skill.json（本地、已 gitignore），交互式 init 也会问一次
+wyht-skill start --query "key=<测试key>"        # 临时覆盖，优先级高于配置
+wyht-skill ui                                   # 不确定写什么时，页面上填，复制生成的命令
+wyht-skill doctor                               # 明文显示当前 loginQuery，确认这次启动到底带没带
+```
+
+规则：`hisUserId`、`logCollect` 是专用键（各有开关），`--query` 里出现同名会直接报错；值按原样拼接，需要编码请自己先编码。缺参数时**问用户**，不要猜、不要写进文档或代码。
 
 ## 验证一次改动（标准剧本）
 
@@ -62,7 +76,8 @@ wyht-skill init                         # 项目级：在项目根运行，交�
    （注意：`initObj` 上**没有** `openLegacyBubble`，SDK 的该方法映射到 `initObj.openBubble`；方法名不确定就先 `eval "Object.keys(initObj)"`。）
 3. **触发**：优先点真实 UI；脚本触发要**分清改哪个窗**——
    - **改当前窗的页面**（登录页、主窗自身路由）：用宿主写法
-     `wyht-skill eval "initObj.reloadChromium('http://localhost:8080/yl-client-web/login?hisUserId=zgt&logCollect=1&key=2016')"`
+     `wyht-skill eval "initObj.reloadChromium('http://localhost:8080/yl-client-web/login?hisUserId=<hisUserId>&logCollect=1&key=<测试key>')"`
+     （`--query` 已加的参数 `start` 会自己带上；`reloadChromium` 是手工重放，所以要写全。值从 `.wyht-skill.json` 的 `loginQuery` 取，或问用户。）
      （本机构建登录需要后端测试 `key`；`start` 拼的 URL 不带它。）
    - **要开/切子窗**（气泡、独立窗）：**绝不能**用 `location.href` 或 `Page.navigate` —— 那只改"当前选中的那个窗"，会把**主窗**导航成子窗内容、尺寸被挤压。正确做法：
      `wyht-skill eval "initObj.openForm({ formName: '客户端系统-消息提醒', param: '<子窗 URL>', width: 380, height: 620 })"`
@@ -165,8 +180,7 @@ wyht-skill page     # 主窗 URL 是否 = 配置 webUrl，且已进目标业务�
 ```powershell
 # 0. 两个 dev server 就绪：yl-client-web 8080、mutual-recognition-ball 8081（predev 会重生成 public/default.js）
 wyht-skill doctor; wyht-skill check
-wyht-skill start
-wyht-skill eval "initObj.reloadChromium('http://localhost:8080/yl-client-web/login?hisUserId=<hisUserId>&key=<后端测试key>')"
+wyht-skill start --query "key=<测试key>"      # 额外参数走 --query，不要写死在文档/脚本里
 
 # 1. 造数（脚本在项目 scripts/e2e/ball/；先 probe，再 seed，退出码 3 = 验收不成立）
 #    先把 fixtures.example.json 复制成 fixtures.local.json 填专用测试患者（已 gitignore）

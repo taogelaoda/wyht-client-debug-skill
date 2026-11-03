@@ -11,7 +11,10 @@ import {
 import { listeningPorts, portListening, processesByName, httpStatus, sleep } from './probe.mjs';
 import { listPages, pickPage, evaluate, waitForPage } from './cdp.mjs';
 import { readShellConfig, classify, checkExitCode } from './shellconfig.mjs';
-import { buildDoctorReport, buildStartUrl, startPreflight, stopVerdict, matchLocalPage } from './actions.mjs';
+import {
+  buildDoctorReport, buildStartUrl, startPreflight, stopVerdict, matchLocalPage,
+  parseLoginQuery, renderLoginUiHtml, isExpectedCdpDrop,
+} from './actions.mjs';
 import { nativeWindows, filterWindows } from './win.mjs';
 
 export function addClientEntry(store, dir, options) {
@@ -193,6 +196,25 @@ export async function cmdInstall(args, env) {
   return 0;
 }
 
+// 生成「登录 URL 编排器」静态页并用默认浏览器打开：不起端口、不执行命令，参数只在本页内拼装
+export async function cmdUi(args, project, env) {
+  const file = path.join(os.tmpdir(), 'wyht-skill-login-ui.html');
+  fs.writeFileSync(file, renderLoginUiHtml(project || {}), 'utf8');
+  try {
+    const p = spawn('cmd', ['/c', 'start', '', file], { detached: true, stdio: 'ignore' });
+    p.unref();
+  } catch (err) {
+    env.out('ui · 页面已生成但打不开浏览器', ['  页面 ' + file, '  下一步：手动双击该文件']);
+    return 1;
+  }
+  env.out('ui · 已生成并打开', [
+    '  页面 ' + file,
+    '  用法：改参数 → 复制「生成的命令」→ 回终端执行',
+    '  本页只生成命令与 URL，不发起请求、不执行任何东西',
+  ]);
+  return 0;
+}
+
 export async function cmdInit(args, projectRoot, project, env) {
   const file = clientsFilePath();
   const store = readClients(file);
@@ -237,7 +259,18 @@ export async function cmdInit(args, projectRoot, project, env) {
     : (existing.hisUserId || (nonInteractive ? '' : await ask('hisUserId（可留空）', '')));
 
   // 校验都通过了才写盘，避免失败时留下半套配置
-  writeProject(projectRoot, { version: 1, client: chosen, webUrl, hisUserId });
+  // 额外登录参数（如后端测试 key）：非交互环境只认 --login-query，交互时问一次；都不用就沿用旧值
+  let loginQuery = args.loginQuery !== undefined && args.loginQuery !== null
+    ? args.loginQuery
+    : (existing.loginQuery || (nonInteractive ? '' : await ask('额外登录参数（k=v&…，可留空）', '')));
+  try {
+    parseLoginQuery(loginQuery);
+  } catch (err) {
+    env.err('init · 额外登录参数不合法');
+    console.error('  ' + err.message);
+    return 1;
+  }
+  writeProject(projectRoot, { version: 1, client: chosen, webUrl, hisUserId, loginQuery });
   ensureGitignore(projectRoot, '.wyht-skill.json');
 
   fs.mkdirSync(skillsDir, { recursive: true });
@@ -330,6 +363,7 @@ export async function cmdDoctor(args, project, client, env) {
     webStatus,
     pages,
     webUrl: project.webUrl,
+    loginQuery: project.loginQuery,
   }));
   return 0;
 }
@@ -394,7 +428,16 @@ export async function cmdStart(args, project, client, env) {
     env.out('start · 前置条件未满足', [pre.message]);
     return pre.exitCode;
   }
-  const url = buildStartUrl({ webUrl: project.webUrl, hisUserId: project.hisUserId, log: args.log });
+  const query = args.query !== undefined && args.query !== null ? args.query : project.loginQuery;
+  // --his-user-id 在 start 上也生效：否则传了却不生效，排障时会被误判成"配置没读到"
+  const hisUserId = args.hisUserId !== undefined && args.hisUserId !== null ? args.hisUserId : project.hisUserId;
+  let url;
+  try {
+    url = buildStartUrl({ webUrl: project.webUrl, hisUserId, log: args.log, query });
+  } catch (err) {
+    env.out('start · 参数不合法', ['  ' + err.message, '  下一步：修正 --query 或 .wyht-skill.json 的 loginQuery']);
+    return 1;
+  }
   const launched = await launchClient(exePath, url, client.dir);
   if (!launched.ok) {
     env.out('start · 失败', [
@@ -461,12 +504,16 @@ export async function cmdStop(args, project, client, env) {
   try {
     evalResult = await evaluate(page, 'initObj.exitApplication()', { timeoutMs });
   } catch (err) {
-    env.out('stop · 失败', [
-      '  页面 ' + page.url,
-      '  ' + (err && err.message ? err.message : err),
-      '  下一步：wyht-skill doctor 确认 9222 上列出的页面是本地前端；必要时按 skill 红线人工处理',
-    ]);
-    return 1;
+    const message = err && err.message ? err.message : String(err);
+    // exitApplication 会立刻关掉浏览器，响应回不来、连接断开都是预期的；继续走退出验收
+    if (!isExpectedCdpDrop(message)) {
+      env.out('stop · 失败', [
+        '  页面 ' + page.url,
+        '  ' + message,
+        '  下一步：wyht-skill doctor 确认 9222 上列出的页面是本地前端；必要时按 skill 红线人工处理',
+      ]);
+      return 1;
+    }
   }
   const pageError = describeException(evalResult && evalResult.exceptionDetails);
   const deadline = Date.now() + timeoutMs;
